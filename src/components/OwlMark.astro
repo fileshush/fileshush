@@ -1,0 +1,28 @@
+---
+/** Simplified owl head used as the logo mark. Reads fine at 16px. */
+interface Props {
+  size?: number;
+  class?: string;
+}
+
+const { size = 28, class: className } = Astro.props;
+---
+
+<svg
+  class:list={["owl-mark", className]}
+  width={size}
+  height={size}
+  viewBox="0 0 32 32"
+  aria-hidden="true"
+  focusable="false"
+>
+  <path
+    class="owl__body"
+    d="M4 16C4 10 6 5 7 3L13 7.5C14.5 7.2 17.5 7.2 19 7.5L25 3C26 5 28 10 28 16C28 24 22 29 16 29C10 29 4 24 4 16Z"
+  ></path>
+  <circle class="owl__eye" cx="11.5" cy="15" r="4.3"></circle>
+  <circle class="owl__eye" cx="20.5" cy="15" r="4.3"></circle>
+  <circle class="owl__pupil" cx="11.5" cy="15.6" r="1.8"></circle>
+  <circle class="owl__pupil" cx="20.5" cy="15.6" r="1.8"></circle>
+  <path class="owl__beak" d="M14.4 19.8H17.6L16 23Z"></path>
+</svg>

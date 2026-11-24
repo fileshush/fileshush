@@ -1,0 +1,235 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ToolCard from "../components/ToolCard.astro";
+import ShareCheck from "../components/ShareCheck.astro";
+import FAQ from "../components/FAQ.astro";
+import Icon, { type IconName } from "../components/Icon.astro";
+import { site } from "../config";
+import { tools } from "../lib/tools";
+import type { ShareCheckItem } from "../lib/shareCheck";
+import type { ToolFaq } from "../lib/toolContent";
+
+const title = `${site.name} — Remove photo location data & shrink files`;
+
+const exampleReport: ShareCheckItem[] = [
+  {
+    icon: "location",
+    label: "Location",
+    before: "6.9271, 79.8612",
+    after: "Removed",
+    status: "removed",
+  },
+  {
+    icon: "camera",
+    label: "Phone",
+    before: "iPhone 15 Pro",
+    after: "Removed",
+    status: "removed",
+  },
+  {
+    icon: "calendar",
+    label: "Date",
+    before: "12 May 2026, 09:41",
+    after: "Removed",
+    status: "removed",
+  },
+  {
+    icon: "file",
+    label: "Size",
+    before: "4.2 MB",
+    after: "4.1 MB",
+    status: "reduced",
+    note: "Metadata removed, picture unchanged",
+  },
+];
+
+const giveaways: { icon: IconName; title: string; text: string }[] = [
+  {
+    icon: "map-pin",
+    title: "Location",
+    text: "Exact GPS coordinates of where a photo was taken.",
+  },
+  {
+    icon: "camera",
+    title: "Phone & camera",
+    text: "Make, model and sometimes serial details.",
+  },
+  {
+    icon: "user",
+    title: "Author & software",
+    text: "Names and company info inside PDFs and documents.",
+  },
+];
+
+const steps = [
+  {
+    title: "Drop your file",
+    text: "Photos, PDFs or audio. They open inside your browser tab.",
+  },
+  {
+    title: "See what's inside",
+    text: "Fileshush lists what it found: places, devices, names, sizes.",
+  },
+  {
+    title: "Download the clean copy",
+    text: "Your original stays as it was. You get a new, cleaner file.",
+  },
+];
+
+const faqs: ToolFaq[] = [
+  {
+    q: "Are my files uploaded anywhere?",
+    a: "No. Fileshush tools are built to run in your browser, so there is no step where a file is sent to us. You can check it yourself in the Network tab of your browser's developer tools.",
+  },
+  {
+    q: "Do the tools work yet?",
+    a: "One does: the EXIF & GPS remover works now. The others are being built one at a time. Each tool page tells you whether it is ready.",
+  },
+  {
+    q: "Do I need an account?",
+    a: "No. There is no sign-up, no password and no email to hand over.",
+  },
+  {
+    q: "Is it free?",
+    a: "Yes. Simple banner ads may appear later to cover running costs. They will never be pop-ups and never sit between you and a download button.",
+  },
+  {
+    q: "What is EXIF data?",
+    a: "It is information a camera or phone writes inside a photo: when it was taken, which device took it and, if location is on, where. Anyone who gets the original file can read it.",
+  },
+];
+
+const siteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: site.name,
+  url: Astro.site?.toString(),
+  description: site.description,
+};
+---
+
+<BaseLayout
+  title={title}
+  description={site.description}
+  canonicalPath="/"
+  structuredData={siteSchema}
+>
+  <section class="hero">
+    <div class="container hero__grid">
+      <div class="hero__copy">
+        <p class="micro">No upload · No sign-up</p>
+        <h1>Your photos are talking. Fileshush them.</h1>
+        <p class="hero__lede">
+          Photos and documents carry hidden details — where you were, which
+          phone you used, who wrote the file. Fileshush shows you what's
+          inside, cleans it, and shrinks it. Everything happens in your
+          browser, so your files never leave your device.
+        </p>
+        <div class="hero__actions">
+          <a class="btn btn--primary" href="#tools">See the tools</a>
+          <a class="btn" href="/how-we-protect-your-files">How it protects your files</a>
+        </div>
+        <p class="hero__note">
+          Six tools, all running in your browser.
+        </p>
+        <ul class="trust-line">
+          <li><Icon name="check" size={16} strokeWidth={2.25} />No uploads</li>
+          <li><Icon name="check" size={16} strokeWidth={2.25} />No account</li>
+          <li><Icon name="check" size={16} strokeWidth={2.25} />No install</li>
+        </ul>
+      </div>
+
+      <div class="hero__demo">
+        <ShareCheck
+          title="Photo check"
+          items={exampleReport}
+          found={3}
+          headingTag="h2"
+          example
+        />
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight" aria-labelledby="gives-away-heading">
+    <div class="container split">
+      <div class="split__intro">
+        <h2 id="gives-away-heading">What your files give away</h2>
+        <p>
+          You never typed any of this. Your phone added it for you.
+        </p>
+      </div>
+      <ul class="giveaways">
+        {giveaways.map((item) => (
+          <li>
+            <span class="giveaways__icon">
+              <Icon name={item.icon} size={20} />
+            </span>
+            <div>
+              <h3>{item.title}</h3>
+              <p>{item.text}</p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <section class="section" id="tools" aria-labelledby="tools-heading">
+    <div class="container">
+      <h2 id="tools-heading" class="section__title">Tools</h2>
+      <div class="tool-grid">
+        {tools.map((tool) => <ToolCard tool={tool} />)}
+      </div>
+    </div>
+  </section>
+
+  <section class="section section--tight" id="how-it-works" aria-labelledby="how-heading">
+    <div class="container">
+      <h2 id="how-heading" class="section__title">How it works</h2>
+      <ol class="steps-row">
+        {steps.map((step, index) => (
+          <li>
+            <div class="steps-row__top">
+              <span class="steps-row__num num">0{index + 1}</span>
+              <span class="steps-row__line" aria-hidden="true"></span>
+            </div>
+            <h3>{step.title}</h3>
+            <p>{step.text}</p>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+
+  <section class="band" aria-labelledby="why-heading">
+    <div class="container split">
+      <div class="split__intro">
+        <h2 id="why-heading">Why we built it</h2>
+      </div>
+      <figure class="maker">
+        <blockquote>
+          <p>
+            I didn't like uploading my ID scans and family photos to random
+            websites just to shrink them. So I built tools that do the work on
+            your own device.
+          </p>
+        </blockquote>
+        <figcaption>— the Fileshush maker</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="home-faq-heading">
+    <div class="container split">
+      <div class="split__intro">
+        <h2 id="home-faq-heading">Questions</h2>
+        <p>
+          More detail is on{" "}
+          <a href="/how-we-protect-your-files">how we protect your files</a>.
+        </p>
+      </div>
+      <FAQ items={faqs} title="Common questions" headingId="faq-list-heading" hideTitle />
+    </div>
+  </section>
+</BaseLayout>

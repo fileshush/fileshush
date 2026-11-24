@@ -1,0 +1,39 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ToolCard from "../components/ToolCard.astro";
+import Owl from "../components/Owl.astro";
+import { tools } from "../lib/tools";
+
+const suggestions = tools.slice(0, 3);
+---
+
+<BaseLayout
+  title="Page not found"
+  description="That page does not exist. Browse the private file tools instead."
+  canonical={false}
+  noindex
+>
+  <div class="page">
+    <div class="container">
+      <div class="not-found">
+        <Owl state="idle" size={96} />
+        <div>
+          <p class="micro">Error 404</p>
+          <h1>Shh… this page doesn't exist.</h1>
+          <p class="lede">
+            The link may be old, or the address may have a typo. Try one of the
+            tools below.
+          </p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="/#tools">See all tools</a>
+            <a class="btn" href="/contact">Report a broken link</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="tool-grid">
+        {suggestions.map((tool) => <ToolCard tool={tool} />)}
+      </div>
+    </div>
+  </div>
+</BaseLayout>

@@ -1,0 +1,13 @@
+---
+interface Props {
+  zipName?: string;
+}
+
+const { zipName = "files.zip" } = Astro.props;
+---
+
+<file-list class="file-list" data-zip-name={zipName} hidden></file-list>
+
+<script>
+  import "../lib/fileListElement";
+</script>

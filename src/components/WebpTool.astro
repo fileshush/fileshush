@@ -1,0 +1,161 @@
+---
+import DropZone from "./DropZone.astro";
+import FileList from "./FileList.astro";
+---
+
+<div class="exif-tool" data-webp-tool>
+  <DropZone
+    id="webp-input"
+    accept=".jpg,.jpeg,.png,.gif,image/jpeg,image/png,image/gif"
+    label="Drop images here"
+    hint="or choose files · JPG, PNG or GIF"
+  />
+
+  <div class="exif-controls" data-controls hidden>
+    <fieldset class="exif-options">
+      <legend>WebP settings</legend>
+      <label class="exif-option">
+        <span>
+          <strong>Quality: <output data-quality-value>80</output></strong>
+          <span>Lower means a smaller file. 75 to 85 looks great for most photos.</span>
+          <input type="range" min="1" max="100" step="1" value="80" data-quality aria-label="WebP quality" />
+        </span>
+      </label>
+      <label class="exif-option">
+        <input type="checkbox" data-lossless />
+        <span>
+          <strong>Lossless</strong>
+          <span>Keeps every pixel exact. Good for logos and PNG artwork. Files are bigger.</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <div class="exif-actions">
+      <button class="btn btn--primary" type="button" data-convert>Convert to WebP</button>
+      <button class="btn btn--ghost" type="button" data-clear>Start over</button>
+    </div>
+  </div>
+
+  <p class="visually-hidden" role="status" aria-live="polite" data-status></p>
+  <p class="exif-message" data-warning hidden></p>
+  <FileList zipName="fileshush-webp.zip" />
+</div>
+
+<script>
+  import { convertToWebp, isSupportedFile, uniqueName, webpFileName } from "../tools/webp";
+  import type { FileListElement } from "../lib/fileListElement";
+
+  const root = document.querySelector<HTMLElement>("[data-webp-tool]");
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const controls = root.querySelector<HTMLElement>("[data-controls]")!;
+    const slider = root.querySelector<HTMLInputElement>("[data-quality]")!;
+    const sliderValue = root.querySelector<HTMLOutputElement>("[data-quality-value]")!;
+    const lossless = root.querySelector<HTMLInputElement>("[data-lossless]")!;
+    const convertButton = root.querySelector<HTMLButtonElement>("[data-convert]")!;
+    const clearButton = root.querySelector<HTMLButtonElement>("[data-clear]")!;
+    const status = root.querySelector<HTMLElement>("[data-status]")!;
+    const warning = root.querySelector<HTMLElement>("[data-warning]")!;
+    const list = root.querySelector<FileListElement>("file-list")!;
+
+    interface Pending {
+      id: string;
+      file: File;
+    }
+    let pending: Pending[] = [];
+    let busy = false;
+    let nextId = 1;
+    const taken = new Set<string>();
+
+    function refresh() {
+      controls.hidden = pending.length === 0 && list.getFiles().length === 0;
+      convertButton.disabled = busy || pending.length === 0;
+      convertButton.textContent = busy
+        ? "Converting…"
+        : pending.length === 1
+          ? "Convert 1 image to WebP"
+          : `Convert ${pending.length} images to WebP`;
+      slider.disabled = busy || lossless.checked;
+      lossless.disabled = busy;
+    }
+
+    slider.addEventListener("input", () => (sliderValue.textContent = slider.value));
+    lossless.addEventListener("change", refresh);
+
+    root.addEventListener("files-selected", (event) => {
+      const files = (event as CustomEvent<{ files: File[] }>).detail.files;
+      for (const file of files) {
+        const id = String(nextId++);
+        if (isSupportedFile(file)) {
+          list.addFile({ id, name: file.name, originalSize: file.size, status: "waiting" });
+          pending.push({ id, file });
+        } else {
+          list.addFile({
+            id,
+            name: file.name,
+            originalSize: file.size,
+            status: "error",
+            error: "Only JPG, PNG and GIF images are supported.",
+          });
+        }
+      }
+      refresh();
+    });
+
+    convertButton.addEventListener("click", async () => {
+      if (busy || pending.length === 0) return;
+      busy = true;
+      const queue = pending;
+      pending = [];
+      refresh();
+
+      const options = { quality: Number(slider.value), lossless: lossless.checked };
+      let ok = 0;
+      let larger = 0;
+      for (let i = 0; i < queue.length; i++) {
+        const { id, file } = queue[i];
+        list.updateFile(id, { status: "processing" });
+        status.textContent = `Converting ${i + 1} of ${queue.length}…`;
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        try {
+          const result = await convertToWebp(file, options);
+          if (result.larger) larger += 1;
+          list.updateFile(id, {
+            status: "done",
+            blob: result.blob,
+            newSize: result.newSize,
+            downloadName: uniqueName(webpFileName(file.name), taken),
+            error: undefined,
+          });
+          ok += 1;
+        } catch (error) {
+          list.updateFile(id, {
+            status: "error",
+            error: error instanceof Error ? error.message : "This image could not be converted.",
+          });
+        }
+      }
+
+      busy = false;
+      refresh();
+      if (larger > 0) {
+        warning.hidden = false;
+        warning.textContent =
+          `${larger} WebP ${larger === 1 ? "file is" : "files are"} larger than the original. ` +
+          "Try a lower quality, or keep the original for that image.";
+      }
+      status.textContent = `Done. ${ok} of ${queue.length} converted.`;
+    });
+
+    clearButton.addEventListener("click", () => {
+      if (busy) return;
+      pending = [];
+      taken.clear();
+      list.clear();
+      warning.hidden = true;
+      refresh();
+      status.textContent = "Cleared.";
+    });
+  }
+</script>

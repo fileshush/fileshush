@@ -1,0 +1,364 @@
+---
+import DropZone from "./DropZone.astro";
+---
+
+<div class="sz" data-sz>
+  <DropZone
+    id="sz-input"
+    accept=".jpg,.jpeg,.png,.gif,.webp,image/jpeg,image/png,image/gif,image/webp"
+    label="Drop up to 3 thumbnails here"
+    hint="or choose files · JPG, PNG or GIF"
+  />
+
+  <p class="visually-hidden" role="status" aria-live="polite" data-status></p>
+
+  <div class="sz__panel" data-panel hidden>
+    <ul class="sz__thumbs" data-thumbs></ul>
+    <ul class="sz__checks" data-checks></ul>
+
+    <div class="sz__controls">
+      <label class="sz__field">
+        <span>Video title</span>
+        <input type="text" data-title maxlength="100" value="How I made my best thumbnail yet" />
+      </label>
+      <label class="sz__field">
+        <span>Channel name</span>
+        <input type="text" data-channel maxlength="40" value="Your Channel" />
+      </label>
+      <label class="sz__check"><input type="checkbox" data-stamp checked /> Show timestamp box</label>
+      <div class="sz__seg" role="group" aria-label="Theme">
+        <label><input type="radio" name="sz-theme" value="light" checked /><span>Light</span></label>
+        <label><input type="radio" name="sz-theme" value="dark" /><span>Dark</span></label>
+      </div>
+      <div class="sz__seg" role="group" aria-label="Preview type">
+        <label><input type="radio" name="sz-mode" value="layouts" checked /><span>Layouts</span></label>
+        <label><input type="radio" name="sz-mode" value="shorts" /><span>Shorts</span></label>
+      </div>
+    </div>
+
+    <div data-preview></div>
+  </div>
+
+  <p class="sz__note micro">Not affiliated with YouTube. Mock layouts are generic illustrations, sizes are approximate.</p>
+</div>
+
+<script>
+  import {
+    LAYOUTS,
+    MAX_COMPARE,
+    SHORTS_HEIGHT,
+    SHORTS_WIDTH,
+    checkThumbnail,
+    cleanLabel,
+    fitWidth,
+    heightFor,
+    shortsZones,
+    timestampBox,
+    type Check,
+  } from "../tools/safeZone";
+  import { formatBytes } from "../lib/formatBytes";
+
+  interface Thumb {
+    name: string;
+    url: string;
+    width: number;
+    height: number;
+    bytes: number;
+    checks: Check[];
+  }
+
+  const root = document.querySelector<HTMLElement>("[data-sz]");
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const q = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const panel = q("[data-panel]");
+    const thumbsEl = q("[data-thumbs]");
+    const checksEl = q("[data-checks]");
+    const previewEl = q("[data-preview]");
+    const titleIn = q<HTMLInputElement>("[data-title]");
+    const channelIn = q<HTMLInputElement>("[data-channel]");
+    const stampIn = q<HTMLInputElement>("[data-stamp]");
+    const status = q("[data-status]");
+
+    const thumbs: Thumb[] = [];
+    let active = 0;
+
+    const radio = (name: string) =>
+      root.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? "";
+
+    function el<K extends keyof HTMLElementTagNameMap>(
+      tag: K,
+      cls?: string,
+      ...kids: (Node | string)[]
+    ): HTMLElementTagNameMap[K] {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      n.append(...kids);
+      return n;
+    }
+
+    function load(file: File): Promise<Thumb> {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () =>
+          resolve({
+            name: file.name,
+            url,
+            width: img.naturalWidth,
+            height: img.naturalHeight,
+            bytes: file.size,
+            checks: checkThumbnail({
+              width: img.naturalWidth,
+              height: img.naturalHeight,
+              bytes: file.size,
+              type: file.type,
+            }),
+          });
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error(file.name));
+        };
+        img.src = url;
+      });
+    }
+
+    /* A thumbnail box with optional timestamp overlay, sized to `width` px. */
+    function thumbBox(t: Thumb, width: number): HTMLElement {
+      const box = el("div", "sz-thumb");
+      box.style.width = `${width}px`;
+      const img = el("img");
+      img.src = t.url;
+      img.alt = "";
+      box.append(img);
+      if (stampIn.checked) {
+        const b = timestampBox(1280, 720);
+        const s = el("span", "sz-thumb__stamp", "12:34");
+        s.style.left = `${(b.x / 1280) * 100}%`;
+        s.style.top = `${(b.y / 720) * 100}%`;
+        s.style.width = `${(b.width / 1280) * 100}%`;
+        s.style.height = `${(b.height / 720) * 100}%`;
+        s.style.fontSize = `${Math.max(6, width * 0.035)}px`;
+        box.append(s);
+      }
+      return box;
+    }
+
+    function meta(title: string, channel: string, small = false): HTMLElement {
+      return el(
+        "div",
+        "sz-meta" + (small ? " sz-meta--small" : ""),
+        el("p", "sz-meta__title", title),
+        el("p", "sz-meta__sub", channel),
+        el("p", "sz-meta__sub", "12K views · 2 days ago"),
+      );
+    }
+
+    function avatar(channel: string): HTMLElement {
+      const a = el("span", "sz-avatar", channel.charAt(0).toUpperCase());
+      a.setAttribute("aria-hidden", "true");
+      return a;
+    }
+
+    function layoutCard(id: string, t: Thumb, title: string, channel: string, avail: number): HTMLElement {
+      const spec = LAYOUTS.find((l) => l.id === id)!;
+      const w = fitWidth(spec.thumbWidth, avail);
+      const thumb = thumbBox(t, w);
+      if (id === "home" || id === "mobile") {
+        const row = el("div", "sz-row", avatar(channel), meta(title, channel));
+        return el("div", `sz-card sz-card--${id}`, thumb, row);
+      }
+      // search and sidebar put text beside the picture
+      const wrap = el("div", `sz-card sz-card--side`, thumb, meta(title, channel, id === "sidebar"));
+      if (w < spec.thumbWidth) wrap.classList.add("sz-card--stack");
+      return wrap;
+    }
+
+    function renderShorts(t: Thumb, title: string, channel: string): HTMLElement {
+      const frame = el("div", "sz-shorts");
+      const img = el("img");
+      img.src = t.url;
+      img.alt = "";
+      frame.append(img);
+      for (const z of shortsZones()) {
+        const d = el("div", `sz-zone sz-zone--${z.id}`, el("span", "", z.label));
+        d.style.left = `${(z.x / SHORTS_WIDTH) * 100}%`;
+        d.style.top = `${(z.y / SHORTS_HEIGHT) * 100}%`;
+        d.style.width = `${(z.width / SHORTS_WIDTH) * 100}%`;
+        d.style.height = `${(z.height / SHORTS_HEIGHT) * 100}%`;
+        frame.append(d);
+      }
+      const cap = el("div", "sz-shorts__cap", el("strong", "", `@${channel.replace(/\s+/g, "")}`), el("span", "", title));
+      frame.append(cap);
+      const note = t.width === 1080 && t.height === 1920
+        ? "Size is 1080×1920."
+        : `Your image is ${t.width}×${t.height}. Shorts are 1080×1920 (9:16). It is cropped to fill the frame here.`;
+      return el(
+        "div",
+        "sz-shortswrap",
+        frame,
+        el("div", "", el("p", "micro", note), el("p", "micro", "Shaded areas are covered by the player. Keep faces and text out of them.")),
+      );
+    }
+
+    function renderPreview() {
+      const t = thumbs[active];
+      previewEl.replaceChildren();
+      if (!t) return;
+      const title = cleanLabel(titleIn.value, "Your video title");
+      const channel = cleanLabel(channelIn.value, "Your Channel", 40);
+      const dark = radio("sz-theme") === "dark";
+      const avail = Math.floor(previewEl.clientWidth || root.clientWidth) - 32;
+
+      const stage = el("div", `sz-stage ${dark ? "sz-stage--dark" : "sz-stage--light"}`);
+      if (radio("sz-mode") === "shorts") {
+        stage.append(renderShorts(t, title, channel));
+        previewEl.append(stage);
+        return;
+      }
+
+      for (const spec of LAYOUTS) {
+        stage.append(
+          el("section", "sz-section", el("h3", "sz-section__h", spec.label), layoutCard(spec.id, t, title, channel, avail)),
+        );
+      }
+      previewEl.append(stage);
+
+      if (thumbs.length > 1) {
+        const grid = el("div", "sz-compare");
+        thumbs.forEach((c, i) => {
+          const w = fitWidth(240, avail);
+          const cell = el("div", "sz-compare__cell", el("p", "micro", `${String.fromCharCode(65 + i)} · ${c.name}`), thumbBox(c, w));
+          const tiny = thumbBox(c, fitWidth(168, avail));
+          cell.append(tiny);
+          grid.append(cell);
+        });
+        previewEl.append(el("h3", "sz-section__h sz-compare__h", "Compare side by side"), el("div", `sz-stage ${dark ? "sz-stage--dark" : "sz-stage--light"}`, grid));
+      }
+    }
+
+    function renderPanel() {
+      panel.hidden = thumbs.length === 0;
+      thumbsEl.replaceChildren();
+      thumbs.forEach((t, i) => {
+        const pick = el("button", "sz__pick" + (i === active ? " is-active" : ""));
+        pick.type = "button";
+        pick.setAttribute("aria-pressed", String(i === active));
+        const img = el("img");
+        img.src = t.url;
+        img.alt = "";
+        pick.append(img, el("span", "", `${String.fromCharCode(65 + i)} · ${t.name}`));
+        pick.addEventListener("click", () => {
+          active = i;
+          renderPanel();
+        });
+        const rm = el("button", "btn btn--ghost btn--small", "Remove");
+        rm.type = "button";
+        rm.setAttribute("aria-label", `Remove ${t.name}`);
+        rm.addEventListener("click", () => {
+          URL.revokeObjectURL(t.url);
+          thumbs.splice(i, 1);
+          active = Math.min(active, Math.max(0, thumbs.length - 1));
+          renderPanel();
+        });
+        thumbsEl.append(el("li", "sz__thumb-item", pick, rm));
+      });
+
+      checksEl.replaceChildren();
+      const t = thumbs[active];
+      if (t) {
+        checksEl.append(el("li", "sz__check-row", `${t.width}×${t.height} · ${formatBytes(t.bytes)}`));
+        for (const c of t.checks) {
+          checksEl.append(el("li", `sz__check-row sz__check-row--${c.level}`, (c.level === "ok" ? "OK. " : "Warning. ") + c.message));
+        }
+      }
+      renderPreview();
+    }
+
+    async function add(files: File[]) {
+      const room = MAX_COMPARE - thumbs.length;
+      if (room <= 0) {
+        status.textContent = `You can compare up to ${MAX_COMPARE} thumbnails. Remove one first.`;
+        return;
+      }
+      for (const file of files.slice(0, room)) {
+        try {
+          thumbs.push(await load(file));
+          active = thumbs.length - 1;
+        } catch {
+          status.textContent = `${file.name} could not be read as an image.`;
+        }
+      }
+      if (files.length > room) status.textContent = `Only the first ${room} were added. The limit is ${MAX_COMPARE}.`;
+      renderPanel();
+    }
+
+    root.addEventListener("files-selected", (e) => void add((e as CustomEvent<{ files: File[] }>).detail.files));
+    root.querySelectorAll("input[name], [data-title], [data-channel], [data-stamp]").forEach((n) => {
+      if ((n as HTMLInputElement).type === "file") return;
+      n.addEventListener("input", renderPreview);
+      n.addEventListener("change", renderPreview);
+    });
+    let timer = 0;
+    window.addEventListener("resize", () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(renderPreview, 150);
+    });
+  }
+</script>
+
+<style is:global>
+  .sz { display: grid; gap: var(--space-4, 1rem); }
+  .sz__panel { display: grid; gap: 1rem; }
+  .sz__panel[hidden] { display: none; }
+  .sz__thumbs, .sz__checks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .sz__thumb-item { display: flex; align-items: center; gap: 0.25rem; }
+  .sz__pick { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0.6rem 0.25rem 0.25rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; max-width: 100%; }
+  .sz__pick.is-active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--border-strong); }
+  .sz__pick img { width: 64px; height: 36px; object-fit: cover; border-radius: 4px; }
+  .sz__pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+  .sz__checks { flex-direction: column; gap: 0.25rem; }
+  .sz__check-row { font-size: 0.9rem; color: var(--ink-2); }
+  .sz__check-row--warn { color: var(--ink); font-weight: 600; }
+  .sz__controls { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: end; }
+  .sz__field { display: grid; gap: 0.25rem; font-size: 0.9rem; flex: 1 1 220px; min-width: 0; }
+  .sz__field input { padding: 0.5rem 0.65rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface); color: var(--ink); font: inherit; min-width: 0; }
+  .sz__check { display: flex; gap: 0.4rem; align-items: center; font-size: 0.9rem; }
+  .sz__seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
+  .sz__seg label { position: relative; }
+  .sz__seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .sz__seg span { display: block; padding: 0.45rem 0.9rem; font-size: 0.9rem; background: var(--surface); color: var(--ink); }
+  .sz__seg input:checked + span { background: var(--ink); color: var(--bg); }
+  .sz__seg input:focus-visible + span { outline: 2px solid var(--ink); outline-offset: -3px; }
+  .sz__note { color: var(--ink-2); }
+
+  .sz-stage { padding: 1rem; border-radius: var(--radius-md); display: grid; gap: 1.5rem; border: 1px solid var(--border); overflow: hidden; }
+  .sz-stage--light { background: #ffffff; color: #0f0f0f; --sz-sub: #606060; --sz-av: #d9d9d9; }
+  .sz-stage--dark { background: #0f0f0f; color: #f1f1f1; --sz-sub: #aaaaaa; --sz-av: #3a3a3a; }
+  .sz-section__h { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 0.5rem; opacity: 0.7; font-family: inherit; }
+  .sz-compare__h { margin-top: 1rem; }
+  .sz-thumb { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #222; max-width: 100%; flex: none; }
+  .sz-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sz-thumb__stamp { position: absolute; background: rgba(0, 0, 0, 0.8); color: #fff; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-weight: 600; line-height: 1; }
+  .sz-card { display: grid; gap: 0.6rem; max-width: 100%; }
+  .sz-card--side { display: flex; gap: 0.75rem; align-items: flex-start; }
+  .sz-card--stack { flex-direction: column; }
+  .sz-row { display: flex; gap: 0.6rem; }
+  .sz-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--sz-av); display: grid; place-items: center; font-weight: 700; flex: none; }
+  .sz-meta { min-width: 0; }
+  .sz-meta p { margin: 0; }
+  .sz-meta__title { font-weight: 600; font-size: 0.95rem; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .sz-meta__sub { font-size: 0.8rem; color: var(--sz-sub); }
+  .sz-meta--small .sz-meta__title { font-size: 0.8rem; }
+  .sz-meta--small .sz-meta__sub { font-size: 0.72rem; }
+  .sz-compare { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+  .sz-compare__cell { display: grid; gap: 0.5rem; max-width: 100%; }
+  .sz-compare__cell .micro { margin: 0; color: var(--sz-sub); overflow-wrap: anywhere; }
+  .sz-shortswrap { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-start; }
+  .sz-shorts { position: relative; width: min(100%, 270px); aspect-ratio: 9 / 16; border-radius: 14px; overflow: hidden; background: #111; flex: none; }
+  .sz-shorts img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sz-zone { position: absolute; background: rgba(220, 38, 38, 0.35); border: 1px dashed rgba(255, 255, 255, 0.8); color: #fff; font-size: 0.65rem; display: flex; align-items: flex-end; justify-content: center; padding: 2px; box-sizing: border-box; text-align: center; }
+  .sz-zone--top { align-items: center; }
+  .sz-shorts__cap { position: absolute; left: 8px; bottom: 10px; right: 20%; color: #fff; display: grid; gap: 2px; font-size: 0.75rem; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); overflow-wrap: anywhere; }
+</style>

@@ -1,0 +1,367 @@
+---
+import DropZone from "./DropZone.astro";
+---
+
+<div class="exif-tool compress-tool" data-compress-tool>
+  <DropZone
+    id="compress-input"
+    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+    label="Drop images here"
+    hint="or choose files · JPG, PNG or WebP"
+  />
+
+  <div class="exif-controls" data-controls hidden>
+    <fieldset class="exif-options">
+      <legend>How to compress</legend>
+      <label class="exif-option">
+        <input type="radio" name="c-mode" value="quality" checked />
+        <span>
+          <strong>By quality</strong>
+          <span class="compress-row">
+            <input type="range" min="10" max="95" value="75" data-quality aria-label="Quality" />
+            <output data-quality-out class="num">75</output>
+          </span>
+        </span>
+      </label>
+      <label class="exif-option">
+        <input type="radio" name="c-mode" value="target" />
+        <span>
+          <strong>To a target size</strong>
+          <span class="compress-row">
+            <select data-preset aria-label="Target size">
+              <option value="100">100 KB</option>
+              <option value="200">200 KB</option>
+              <option value="500">500 KB</option>
+              <option value="custom">Custom</option>
+            </select>
+            <input type="number" min="5" step="1" value="150" data-custom hidden aria-label="Custom size in KB" />
+            <span data-custom-unit hidden>KB</span>
+          </span>
+        </span>
+      </label>
+    </fieldset>
+
+    <div class="compress-grid">
+      <label class="compress-field">
+        <span>Max width (px)</span>
+        <input type="number" min="1" step="1" placeholder="No limit" data-maxw />
+      </label>
+      <label class="compress-field">
+        <span>Max height (px)</span>
+        <input type="number" min="1" step="1" placeholder="No limit" data-maxh />
+      </label>
+      <label class="compress-field">
+        <span>Save as</span>
+        <select data-format>
+          <option value="same">Same as original</option>
+          <option value="jpeg">JPG</option>
+          <option value="webp">WebP</option>
+        </select>
+      </label>
+    </div>
+    <p class="exif-message" data-hint>
+      PNG files cannot be made smaller by quality in the browser. To shrink a PNG, save it as JPG or WebP, or set a max width or height. JPG does not keep transparency (it becomes white).
+    </p>
+
+    <div class="exif-actions">
+      <button class="btn btn--primary" type="button" data-run>Compress</button>
+      <button class="btn" type="button" data-zip hidden>Download all as ZIP</button>
+      <button class="btn btn--ghost" type="button" data-clear>Start over</button>
+    </div>
+  </div>
+
+  <p class="visually-hidden" role="status" aria-live="polite" data-status></p>
+  <ul class="exif-files" data-files></ul>
+</div>
+
+<style>
+  .compress-row { display: flex; flex-direction: row !important; align-items: center; gap: 0.6rem; }
+  .compress-row input[type="range"] { flex: 1 1 auto; min-width: 8rem; accent-color: var(--brand); }
+  .compress-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.75rem; }
+  .compress-field { display: grid; gap: 0.3rem; font-size: 0.85rem; color: var(--ink-2); }
+  .compress-tool input[type="number"], .compress-tool select {
+    padding: 0.5rem 0.65rem; border: 1px solid var(--border); border-radius: var(--radius-md);
+    background: var(--surface); color: var(--ink); font: inherit; min-width: 0;
+  }
+  .compress-card { padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface); display: grid; gap: 0.5rem; }
+  .compress-card h3 { margin: 0; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .compress-sizes { margin: 0; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+</style>
+
+<script>
+  import {
+    compressedFileName,
+    detectMime,
+    fitDimensions,
+    isLossy,
+    outputMime,
+    percentSaved,
+    searchQuality,
+    type MimeType,
+    type OutputFormat,
+  } from "../tools/compress";
+  import { saveFile, saveZip } from "../lib/download";
+  import { formatBytes } from "../lib/formatBytes";
+
+  const MAX_PIXELS = 100_000_000;
+
+  interface Item {
+    file: File;
+    state: "waiting" | "working" | "done" | "error";
+    blob?: Blob;
+    name?: string;
+    note?: string;
+    error?: string;
+    node?: HTMLLIElement;
+  }
+
+  const root = document.querySelector<HTMLElement>("[data-compress-tool]");
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const q = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const list = q<HTMLUListElement>("[data-files]");
+    const controls = q("[data-controls]");
+    const runBtn = q<HTMLButtonElement>("[data-run]");
+    const zipBtn = q<HTMLButtonElement>("[data-zip]");
+    const clearBtn = q<HTMLButtonElement>("[data-clear]");
+    const status = q("[data-status]");
+    const quality = q<HTMLInputElement>("[data-quality]");
+    const qualityOut = q("[data-quality-out]");
+    const preset = q<HTMLSelectElement>("[data-preset]");
+    const custom = q<HTMLInputElement>("[data-custom]");
+    const customUnit = q("[data-custom-unit]");
+    const maxW = q<HTMLInputElement>("[data-maxw]");
+    const maxH = q<HTMLInputElement>("[data-maxh]");
+    const format = q<HTMLSelectElement>("[data-format]");
+    const modes = root.querySelectorAll<HTMLInputElement>('input[name="c-mode"]');
+    const inputs = [quality, preset, custom, maxW, maxH, format, ...Array.from(modes)];
+
+    const items: Item[] = [];
+    let busy = false;
+
+    const targetMode = () => Array.from(modes).some((m) => m.checked && m.value === "target");
+    const num = (input: HTMLInputElement) => {
+      const n = Number(input.value);
+      return Number.isFinite(n) && n > 0 ? n : undefined;
+    };
+    const pause = () => new Promise<void>((r) => setTimeout(r, 0));
+
+    quality.addEventListener("input", () => (qualityOut.textContent = quality.value));
+    preset.addEventListener("change", () => {
+      custom.hidden = customUnit.hidden = preset.value !== "custom";
+    });
+    // Picking a control switches its radio on.
+    quality.addEventListener("input", () => (modes[0].checked = true));
+    for (const el of [preset, custom]) el.addEventListener("input", () => (modes[1].checked = true));
+
+    function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, ...kids: (Node | string)[]) {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      n.append(...kids);
+      return n;
+    }
+    const pill = (text: string, tone: string) => el("span", `pill pill--${tone}`, text);
+
+    function render(item: Item): HTMLLIElement {
+      const card = el("section", "compress-card");
+      card.setAttribute("aria-label", item.file.name);
+      const head = el("h3", "", item.file.name);
+      card.append(head);
+      if (item.state === "waiting") card.append(pill("Waiting", "neutral"));
+      else if (item.state === "working") card.append(pill("Working…", "neutral"));
+      else if (item.state === "error") {
+        card.append(el("p", "exif-message exif-message--error", item.error ?? "Something went wrong."));
+      } else if (item.blob) {
+        const saved = percentSaved(item.file.size, item.blob.size);
+        card.append(
+          el(
+            "p",
+            "compress-sizes num",
+            `${formatBytes(item.file.size)} → ${formatBytes(item.blob.size)}`,
+            pill(saved > 0 ? `${saved}% smaller` : saved === 0 ? "Same size" : `${-saved}% bigger`, saved > 0 ? "ok" : "warn"),
+          ),
+        );
+        if (item.note) card.append(el("p", "exif-message", item.note));
+        const b = el("button", "btn btn--primary btn--small", "Download");
+        b.type = "button";
+        b.addEventListener("click", () => saveFile(item.blob!, item.name!));
+        card.append(b);
+      }
+      const li = el("li", "exif-file");
+      li.append(card);
+      return li;
+    }
+
+    function paint(item: Item) {
+      const node = render(item);
+      if (item.node?.isConnected) item.node.replaceWith(node);
+      else list.append(node);
+      item.node = node;
+      refresh();
+    }
+
+    function refresh() {
+      const waiting = items.filter((i) => i.state === "waiting").length;
+      const done = items.filter((i) => i.state === "done").length;
+      controls.hidden = items.length === 0;
+      runBtn.hidden = waiting === 0 && !busy;
+      runBtn.disabled = busy || waiting === 0;
+      runBtn.textContent = busy ? "Compressing…" : waiting === 1 ? "Compress 1 image" : `Compress ${waiting} images`;
+      zipBtn.hidden = done < 2;
+      zipBtn.textContent = `Download all ${done} as ZIP`;
+      inputs.forEach((i) => (i.disabled = busy));
+    }
+
+    /* ---------- canvas work ---------- */
+
+    async function load(file: File): Promise<ImageBitmap | HTMLImageElement> {
+      if ("createImageBitmap" in window) {
+        try {
+          return await createImageBitmap(file, { imageOrientation: "from-image" });
+        } catch {
+          /* fall through to <img> */
+        }
+      }
+      const url = URL.createObjectURL(file);
+      try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        return img;
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function toBlob(canvas: HTMLCanvasElement, mime: MimeType, qlt?: number): Promise<Blob> {
+      return new Promise((resolve, reject) => {
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) reject(new Error("The browser could not encode this image."));
+            else if (blob.type !== mime) reject(new Error(`This browser cannot save ${mime.replace("image/", "").toUpperCase()}. Try JPG.`));
+            else resolve(blob);
+          },
+          mime,
+          qlt,
+        );
+      });
+    }
+
+    async function compress(item: Item) {
+      const file = item.file;
+      const inMime = detectMime(file.name, file.type);
+      if (!inMime) throw new Error("Only JPG, PNG and WebP images are supported.");
+      if (file.size === 0) throw new Error("This file is empty (0 bytes).");
+
+      let bitmap: ImageBitmap | HTMLImageElement;
+      try {
+        bitmap = await load(file);
+      } catch {
+        throw new Error("This image is damaged or could not be read.");
+      }
+      const srcW = "naturalWidth" in bitmap ? bitmap.naturalWidth : bitmap.width;
+      const srcH = "naturalHeight" in bitmap ? bitmap.naturalHeight : bitmap.height;
+      if (!srcW || !srcH) throw new Error("This image has no readable size.");
+
+      const size = fitDimensions(srcW, srcH, num(maxW), num(maxH));
+      if (size.width * size.height > MAX_PIXELS) {
+        if ("close" in bitmap) bitmap.close();
+        throw new Error("This image is too large for your browser (over 100 megapixels). Set a smaller max width or height.");
+      }
+
+      const out = outputMime(inMime, format.value as OutputFormat);
+      const canvas = document.createElement("canvas");
+      canvas.width = size.width;
+      canvas.height = size.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Your browser could not create a drawing surface for this image.");
+      if (out === "image/jpeg") {
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, size.width, size.height);
+      }
+      ctx.drawImage(bitmap, 0, 0, size.width, size.height);
+      if ("close" in bitmap) bitmap.close();
+
+      const resized = size.width !== srcW || size.height !== srcH;
+      const notes: string[] = [];
+      if (resized) notes.push(`Resized from ${srcW}×${srcH} to ${size.width}×${size.height}.`);
+
+      let blob: Blob;
+      if (!isLossy(out)) {
+        blob = await toBlob(canvas, out);
+        notes.push("PNG is lossless, so quality does not apply. Save as JPG or WebP for a much smaller file.");
+      } else if (targetMode()) {
+        const kb = preset.value === "custom" ? num(custom) : Number(preset.value);
+        if (!kb) throw new Error("Enter a target size in KB.");
+        const target = kb * 1024;
+        const result = await searchQuality(async (qv) => {
+          const b = await toBlob(canvas, out, qv);
+          return { size: b.size, blob: b };
+        }, target);
+        if (!result.best) {
+          blob = result.smallest.blob;
+          notes.push(`Could not reach ${kb} KB. This is the smallest possible at this size. Try a smaller max width or height.`);
+        } else {
+          blob = result.best.blob;
+          if (!result.close && result.quality < 1) notes.push("Landed a bit under the target; this image jumps in size between quality steps.");
+        }
+      } else {
+        blob = await toBlob(canvas, out, Number(quality.value) / 100);
+      }
+
+      if (blob.size >= file.size && !resized && out === inMime) {
+        notes.push("The result is not smaller than the original. Try a lower quality or another format.");
+      }
+      item.blob = blob;
+      item.name = compressedFileName(file.name, out);
+      item.note = notes.join(" ") || undefined;
+    }
+
+    async function run() {
+      if (busy) return;
+      const queue = items.filter((i) => i.state === "waiting");
+      if (!queue.length) return;
+      busy = true;
+      refresh();
+      let n = 0;
+      for (const item of queue) {
+        item.state = "working";
+        paint(item);
+        await pause();
+        try {
+          await compress(item);
+          item.state = "done";
+        } catch (e) {
+          item.state = "error";
+          item.error = e instanceof Error ? e.message : "This image could not be compressed.";
+        }
+        n += 1;
+        paint(item);
+        status.textContent = `Compressed ${n} of ${queue.length}.`;
+      }
+      busy = false;
+      refresh();
+    }
+
+    root.addEventListener("files-selected", (event) => {
+      const files = (event as CustomEvent<{ files: File[] }>).detail.files;
+      for (const file of files) {
+        const item: Item = { file, state: "waiting" };
+        items.push(item);
+        paint(item);
+      }
+    });
+    runBtn.addEventListener("click", () => void run());
+    zipBtn.addEventListener("click", () => {
+      const done = items.filter((i) => i.state === "done" && i.blob);
+      void saveZip(done.map((i) => ({ name: i.name!, blob: i.blob! })), "fileshush-compressed-images.zip");
+    });
+    clearBtn.addEventListener("click", () => {
+      if (busy) return;
+      items.length = 0;
+      list.replaceChildren();
+      refresh();
+    });
+  }
+</script>

@@ -1,0 +1,122 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { site } from "../config";
+
+const email = site.contactEmail;
+---
+
+<BaseLayout
+  title="Terms of use"
+  description={`The plain-language terms for using ${site.name}. Tools are free, provided as-is, and you must own the files you process.`}
+  canonicalPath="/terms"
+>
+  <div class="page">
+    <div class="container">
+      <div class="page__intro">
+        <p class="micro">Terms</p>
+        <h1>Terms of use</h1>
+        <p class="lede">
+          Plain-language rules for using this site. By using a tool, you agree
+          to these terms.
+        </p>
+        <p class="tool-note">Last updated: 24 November 2026</p>
+      </div>
+
+      <div class="prose">
+        <h2>Who we are</h2>
+        <p>
+          “We” means {site.name}, operated by {site.maker} in {site.location}.
+          You can reach us at <a href={`mailto:${email}`}>{email}</a>.
+        </p>
+
+        <h2>Free tools, as they are</h2>
+        <p>
+          The tools are provided free of charge, “as is” and “as available”. We
+          work to keep them accurate and reliable, but we cannot promise that
+          every file will work, that a result will be perfect, or that the site
+          will always be online.
+        </p>
+
+        <h2>Your files and your rights</h2>
+        <p>
+          You are responsible for the files you open. Only process files you
+          own or have permission to use. Do not use the tools to break copyright
+          law, privacy law or any other law that applies to you.
+        </p>
+        <p>
+          The tools convert only files you select from your own device. They do
+          not download content from YouTube, TikTok or any other platform, and
+          they must not be used for that purpose.
+        </p>
+
+        <h2>Keep your own copy</h2>
+        <p>
+          Always keep the original file. Processing can remove information
+          permanently — for example, metadata cannot be restored after it is
+          stripped. We cannot recover a file for you because we never receive
+          it.
+        </p>
+
+        <h2>No warranty</h2>
+        <p>
+          To the extent allowed by law, we make no warranties about the tools,
+          including fitness for a particular purpose or freedom from errors.
+          Some jurisdictions do not allow certain warranty exclusions, so part
+          of this section may not apply to you.
+        </p>
+
+        <h2>Limitation of liability</h2>
+        <p>
+          To the extent allowed by law, we are not liable for indirect or
+          consequential losses, lost data, lost profits or damage arising from
+          your use of the site. This does not limit liability that cannot be
+          limited by law.
+        </p>
+
+        <h2>Acceptable use</h2>
+        <ul>
+          <li>Do not attack, overload or attempt to break the site.</li>
+          <li>Do not use the tools for illegal or harmful activity.</li>
+          <li>Do not remove copyright notices from other people's work.</li>
+          <li>
+            Do not use automated requests in a way that harms the service for
+            other people.
+          </li>
+        </ul>
+
+        <h2>Intellectual property</h2>
+        <p>
+          © {new Date().getFullYear()} {site.name}. All rights reserved. This
+          applies to the site's own design, text and code. Open-source
+          libraries used by the tools remain under their own licences. Brand
+          names mentioned on the site belong to their owners.
+        </p>
+
+        <h2>Third-party services</h2>
+        <p>
+          The site relies on hosting, code delivery and possibly analytics or
+          advertising services from third parties. Their own terms and privacy
+          policies apply to those services.
+        </p>
+
+        <h2>Governing law</h2>
+        <p>
+          These terms are governed by the laws of {site.location}.
+        </p>
+
+        <h2>Changes</h2>
+        <p>
+          These terms may be updated as the site changes. The date at the top of
+          the page will show the latest version. Continued use after a change
+          means you accept the updated terms.
+        </p>
+
+        <h2>Contact</h2>
+        <p>
+          Questions about these terms can be sent to{" "}
+          <a href={`mailto:${email}`}>{email}</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

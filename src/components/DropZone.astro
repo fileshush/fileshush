@@ -1,0 +1,137 @@
+---
+interface Props {
+  id?: string;
+  accept?: string;
+  multiple?: boolean;
+  label?: string;
+  hint?: string;
+}
+
+const {
+  id = `dropzone-${Math.random().toString(36).slice(2, 8)}`,
+  accept = "",
+  multiple = true,
+  label = "Drop files here",
+  hint = "or tap to choose from your device",
+} = Astro.props;
+---
+
+<div
+  class="dropzone"
+  data-dropzone
+  data-accept={accept}
+  data-multiple={multiple ? "true" : "false"}
+>
+  <input
+    class="dropzone__input"
+    id={id}
+    type="file"
+    accept={accept || undefined}
+    multiple={multiple}
+  />
+  <label class="dropzone__label" for={id}>
+    <span class="dropzone__icon" aria-hidden="true">
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 16V4"></path>
+        <path d="m7 9 5-5 5 5"></path>
+        <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+      </svg>
+    </span>
+    <span class="dropzone__title">{label}</span>
+    <span class="dropzone__hint">{hint}</span>
+  </label>
+  <p class="dropzone__error" data-dropzone-error role="alert" hidden></p>
+</div>
+
+<script>
+  function acceptsFile(file: File, rules: string[]): boolean {
+    if (rules.length === 0) return true;
+
+    const name = file.name.toLowerCase();
+    const type = file.type.toLowerCase();
+
+    return rules.some((rule) => {
+      if (rule.startsWith(".")) return name.endsWith(rule);
+      if (rule.endsWith("/*")) return type.startsWith(rule.slice(0, -1));
+      return type === rule;
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-dropzone]").forEach((zone) => {
+    if (zone.dataset.dropzoneReady === "true") return;
+    zone.dataset.dropzoneReady = "true";
+
+    const input = zone.querySelector<HTMLInputElement>('input[type="file"]');
+    const error = zone.querySelector<HTMLElement>("[data-dropzone-error]");
+    if (!input) return;
+
+    const rules = (zone.dataset.accept ?? "")
+      .split(",")
+      .map((rule) => rule.trim().toLowerCase())
+      .filter(Boolean);
+
+    function showError(rejected: File[]) {
+      if (!error) return;
+
+      if (rejected.length === 0) {
+        error.hidden = true;
+        error.textContent = "";
+        return;
+      }
+
+      error.hidden = false;
+      error.textContent = `These files are not supported here: ${rejected
+        .map((file) => file.name)
+        .join(", ")}. Try a different file.`;
+    }
+
+    function handleFiles(list: FileList | null) {
+      if (!list || list.length === 0) return;
+
+      const files = Array.from(list);
+      const accepted = files.filter((file) => acceptsFile(file, rules));
+      const rejected = files.filter((file) => !acceptsFile(file, rules));
+
+      showError(rejected);
+      if (accepted.length === 0) return;
+
+      const chosen = input?.multiple ? accepted : accepted.slice(0, 1);
+
+      zone.dispatchEvent(
+        new CustomEvent<{ files: File[] }>("files-selected", {
+          detail: { files: chosen },
+          bubbles: true,
+        }),
+      );
+    }
+
+    input.addEventListener("change", () => {
+      handleFiles(input.files);
+      input.value = "";
+    });
+
+    zone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      zone.classList.add("is-dragover");
+    });
+
+    zone.addEventListener("dragleave", () => {
+      zone.classList.remove("is-dragover");
+    });
+
+    zone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      zone.classList.remove("is-dragover");
+      handleFiles(event.dataTransfer?.files ?? null);
+    });
+  });
+</script>

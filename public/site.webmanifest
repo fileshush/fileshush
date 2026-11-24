@@ -1,0 +1,13 @@
+{
+  "name": "Fileshush",
+  "short_name": "Fileshush",
+  "description": "Clean, shrink and check your files. Nothing leaves your device.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#FFFBF5",
+  "theme_color": "#FFFBF5",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

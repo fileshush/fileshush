@@ -1,0 +1,61 @@
+---
+import { getTool } from "../lib/tools";
+import Icon from "./Icon.astro";
+import Owl from "./Owl.astro";
+
+interface Props {
+  slug: string;
+}
+
+const { slug } = Astro.props;
+const tool = getTool(slug);
+
+if (!tool) throw new Error(`Unknown tool "${slug}"`);
+
+// What the finished tool will accept and do, so the placeholder is specific.
+const plans: Record<string, { accepts: string; will: string }> = {
+  "remove-exif-data": {
+    accepts: "JPG, PNG and WebP photos",
+    will: "You will see the location, camera and date stored in each photo, then download a clean copy.",
+  },
+  "compress-image": {
+    accepts: "JPG, PNG and WebP images",
+    will: "You will pick a quality or a target size such as 100 KB, and see the saving before you download.",
+  },
+  "image-to-webp": {
+    accepts: "JPG, PNG and GIF images",
+    will: "You will convert them to WebP and see how much smaller each file gets.",
+  },
+  "split-pdf": {
+    accepts: "One PDF file",
+    will: "You will pick pages from thumbnails, or split every page into its own file.",
+  },
+  "youtube-thumbnail-safe-zone": {
+    accepts: "A JPG, PNG or WebP thumbnail",
+    will: "You will see it at real sizes, with the timestamp area marked.",
+  },
+  "video-to-mp3": {
+    accepts: "MP4, MOV, WEBM, MKV, WAV, M4A, OGG or FLAC",
+    will: "You will choose 128, 192 or 320 kbps and download an MP3.",
+  },
+};
+
+const plan = plans[slug] ?? {
+  accepts: "Your files",
+  will: "You will drop a file in and download the result.",
+};
+---
+
+<div class="in-progress">
+  <Owl state="working" size={72} />
+  <p class="pill pill--neutral">In progress</p>
+  <h2>This tool is being built.</h2>
+  <p class="in-progress__text">
+    It will run entirely in your browser. {plan.will}
+  </p>
+  <p class="in-progress__formats">Will accept: {plan.accepts}</p>
+  <a class="btn btn--primary" href="/#tools">
+    See all tools
+    <Icon name="arrow-right" size={16} />
+  </a>
+</div>

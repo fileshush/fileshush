@@ -1,0 +1,20 @@
+---
+import Icon from "./Icon.astro";
+
+interface Props {
+  /** False while the tool is not built yet: the line then uses the future tense. */
+  ready?: boolean;
+}
+
+const { ready = true } = Astro.props;
+---
+
+<p class="privacy-line">
+  <Icon name="lock" size={16} />
+  <span>
+    {ready
+      ? "Processed on your device. Nothing is uploaded."
+      : "Will run on your device. Nothing will be uploaded."}
+  </span>
+  <a href="/how-we-protect-your-files">How we know</a>
+</p>

@@ -1,0 +1,15 @@
+---
+import { site } from "../config";
+
+interface Props {
+  label?: string;
+}
+
+const { label = "Advertisement" } = Astro.props;
+---
+
+{site.ads.enabled && (
+  <aside class="ad-slot" aria-label={label} data-ad-slot>
+    <span class="ad-slot__label">{label}</span>
+  </aside>
+)}

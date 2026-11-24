@@ -1,0 +1,46 @@
+---
+import type { ToolFaq } from "../lib/toolContent";
+
+interface Props {
+  items: ToolFaq[];
+  title?: string;
+  headingId?: string;
+  hideTitle?: boolean;
+}
+
+const {
+  items,
+  title = "Frequently asked questions",
+  headingId = "faq-heading",
+  hideTitle = false,
+} = Astro.props;
+
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: items.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: {
+      "@type": "Answer",
+      text: item.a,
+    },
+  })),
+};
+
+const faqJson = JSON.stringify(faqSchema).replace(/</g, "\\u003c");
+---
+
+<section class="faq" aria-labelledby={headingId}>
+  <h2 id={headingId} class:list={[hideTitle && "visually-hidden"]}>{title}</h2>
+  <div class="faq__list">
+    {items.map((item) => (
+      <details class="faq__item">
+        <summary>{item.q}</summary>
+        <p>{item.a}</p>
+      </details>
+    ))}
+  </div>
+</section>
+
+<script type="application/ld+json" set:html={faqJson}></script>

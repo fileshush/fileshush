@@ -1,0 +1,23 @@
+---
+import Icon, { type IconName } from "./Icon.astro";
+
+interface Props {
+  icon: string;
+  size?: number;
+}
+
+const { icon, size = 20 } = Astro.props;
+
+const iconMap: Record<string, IconName> = {
+  image: "image",
+  compress: "minimize-2",
+  webp: "file-image",
+  pdf: "file-text",
+  crop: "crop",
+  audio: "music",
+};
+
+const name = iconMap[icon] ?? "file-text";
+---
+
+<Icon name={name} size={size} />
