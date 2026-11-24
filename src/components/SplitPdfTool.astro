@@ -1,0 +1,362 @@
+---
+import DropZone from "./DropZone.astro";
+---
+
+<div class="split-tool" data-split-tool>
+  <DropZone
+    id="split-input"
+    accept=".pdf,application/pdf"
+    multiple={false}
+    label="Drop a PDF here"
+    hint="or choose a file · one PDF at a time"
+  />
+
+  <p class="split-error" role="alert" data-error hidden></p>
+
+  <div class="split-main" data-main hidden>
+    <div class="split-file">
+      <strong data-name></strong>
+      <span class="micro num" data-meta></span>
+      <button class="btn btn--ghost btn--small" type="button" data-clear>Choose another PDF</button>
+    </div>
+
+    <fieldset class="split-modes">
+      <legend>What do you want to do?</legend>
+      <label class="split-mode">
+        <input type="radio" name="split-mode" value="extract" checked />
+        <span><strong>Extract selected pages</strong><span>One new PDF with only the pages you pick.</span></span>
+      </label>
+      <label class="split-mode">
+        <input type="radio" name="split-mode" value="each" />
+        <span><strong>Split every page</strong><span>One PDF per page, in a ZIP.</span></span>
+      </label>
+      <label class="split-mode">
+        <input type="radio" name="split-mode" value="every" />
+        <span><strong>Split every N pages</strong><span>Pieces of N pages each, in a ZIP.</span></span>
+      </label>
+    </fieldset>
+
+    <div class="split-panel" data-panel="extract">
+      <label class="split-field">
+        <span>Pages (click thumbnails or type)</span>
+        <input type="text" inputmode="text" autocomplete="off" placeholder="1-3, 5, 8" data-range />
+      </label>
+      <div class="split-quick">
+        <button class="btn btn--small" type="button" data-select-all>Select all</button>
+        <button class="btn btn--small" type="button" data-select-none>Clear selection</button>
+      </div>
+    </div>
+    <div class="split-panel" data-panel="every" hidden>
+      <label class="split-field">
+        <span>Pages per file</span>
+        <input type="number" min="1" step="1" value="2" data-n />
+      </label>
+    </div>
+
+    <p class="split-hint micro" data-hint></p>
+
+    <div class="split-actions">
+      <button class="btn btn--primary" type="button" data-go>Extract pages</button>
+    </div>
+    <p class="visually-hidden" role="status" aria-live="polite" data-status></p>
+
+    <ul class="split-grid" data-grid></ul>
+  </div>
+</div>
+
+<style>
+  .split-tool { display: grid; gap: 1rem; }
+  .split-main { display: grid; gap: 1rem; }
+  .split-file { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+  .split-error { color: var(--risk, #b42318); font-weight: 600; margin: 0; }
+  .split-modes { display: grid; gap: 0.5rem; border: 0; padding: 0; margin: 0; }
+  .split-modes legend { font-weight: 600; margin-bottom: 0.5rem; }
+  .split-mode { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.75rem; border: 1px solid currentColor; border-radius: 0.75rem; cursor: pointer; }
+  .split-mode:has(input:checked) { border-width: 2px; }
+  .split-mode span span { display: block; opacity: 0.75; font-size: 0.9em; }
+  .split-field { display: grid; gap: 0.35rem; max-width: 24rem; }
+  .split-field input { font: inherit; padding: 0.6rem 0.75rem; border-radius: 0.5rem; border: 1px solid currentColor; background: transparent; color: inherit; }
+  .split-quick { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+  .split-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr)); gap: 0.75rem; }
+  .split-page { all: unset; box-sizing: border-box; display: grid; gap: 0.35rem; justify-items: center; width: 100%; padding: 0.4rem; border: 2px solid transparent; border-radius: 0.6rem; cursor: pointer; text-align: center; }
+  .split-page:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  .split-page[aria-pressed="true"] { border-color: currentColor; background: color-mix(in srgb, currentColor 10%, transparent); }
+  .split-thumb { width: 100%; aspect-ratio: 3 / 4; display: grid; place-items: center; background: #fff; border-radius: 0.3rem; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.15); overflow: hidden; }
+  .split-thumb canvas { max-width: 100%; max-height: 100%; }
+  .split-grid[data-static] .split-page { cursor: default; }
+</style>
+
+<script>
+  import { saveFile, saveZip } from "../lib/download";
+  import { formatBytes } from "../lib/formatBytes";
+  import {
+    PdfError,
+    chunkFileName,
+    extractPages,
+    formatPageRanges,
+    loadPdf,
+    parsePageRanges,
+    planChunks,
+    splitIntoChunks,
+    toPdfError,
+  } from "../tools/pdfSplit";
+  // Vite turns this into a hashed asset URL in the build.
+  import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+
+  const root = document.querySelector<HTMLElement>("[data-split-tool]");
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const $ = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const errorBox = $("[data-error]");
+    const main = $("[data-main]");
+    const grid = $<HTMLUListElement>("[data-grid]");
+    const range = $<HTMLInputElement>("[data-range]");
+    const nInput = $<HTMLInputElement>("[data-n]");
+    const hint = $("[data-hint]");
+    const go = $<HTMLButtonElement>("[data-go]");
+    const status = $("[data-status]");
+    const modes = root.querySelectorAll<HTMLInputElement>('input[name="split-mode"]');
+    const panels = root.querySelectorAll<HTMLElement>("[data-panel]");
+
+    let file: File | null = null;
+    let pageCount = 0;
+    let lib: import("pdf-lib").PDFDocument | null = null;
+    let viewer: import("pdfjs-dist").PDFDocumentProxy | null = null;
+    let task: import("pdfjs-dist").PDFDocumentLoadingTask | null = null;
+    let observer: IntersectionObserver | null = null;
+    let busy = false;
+    const selected = new Set<number>();
+    const buttons: HTMLButtonElement[] = [];
+
+    const mode = () => Array.from(modes).find((m) => m.checked)?.value ?? "extract";
+    const say = (m: string) => (status.textContent = m);
+    function fail(message: string) {
+      errorBox.textContent = message;
+      errorBox.hidden = false;
+    }
+
+    function reset() {
+      observer?.disconnect();
+      observer = null;
+      void task?.destroy();
+      task = null;
+      viewer = null;
+      lib = null;
+      file = null;
+      pageCount = 0;
+      selected.clear();
+      buttons.length = 0;
+      grid.replaceChildren();
+      range.value = "";
+      main.hidden = true;
+      errorBox.hidden = true;
+    }
+
+    /* ---------- selection ---------- */
+
+    function syncButtons() {
+      buttons.forEach((b, i) => b.setAttribute("aria-pressed", String(selected.has(i + 1))));
+    }
+
+    function parsedRange() {
+      return parsePageRanges(range.value, pageCount);
+    }
+
+    function refresh() {
+      const m = mode();
+      panels.forEach((p) => (p.hidden = p.dataset.panel !== m));
+      grid.toggleAttribute("data-static", m !== "extract");
+      let text = "";
+      let ok = true;
+      if (m === "extract") {
+        const n = selected.size;
+        ok = n > 0;
+        text = ok ? `${n} ${n === 1 ? "page" : "pages"} selected.` : "Select at least one page.";
+        go.textContent = "Extract pages";
+      } else if (m === "each") {
+        text = `Makes ${pageCount} separate PDFs in a ZIP.`;
+        go.textContent = "Split every page";
+      } else {
+        const n = Number(nInput.value);
+        ok = Number.isInteger(n) && n >= 1;
+        text = ok
+          ? `Makes ${planChunks(pageCount, n).length} PDFs of up to ${n} pages in a ZIP.`
+          : "Enter a whole number, 1 or more.";
+        go.textContent = "Split every N pages";
+      }
+      hint.textContent = text;
+      go.disabled = busy || !ok;
+    }
+
+    function togglePage(n: number) {
+      if (mode() !== "extract") return;
+      if (selected.has(n)) selected.delete(n);
+      else selected.add(n);
+      range.value = formatPageRanges([...selected]);
+      range.removeAttribute("aria-invalid");
+      syncButtons();
+      refresh();
+    }
+
+    range.addEventListener("input", () => {
+      const r = parsedRange();
+      selected.clear();
+      if (r.ok) r.pages.forEach((p) => selected.add(p));
+      range.setAttribute("aria-invalid", String(!r.ok && range.value.trim() !== ""));
+      syncButtons();
+      refresh();
+      if (!r.ok && range.value.trim() !== "") hint.textContent = r.error;
+    });
+    $("[data-select-all]").addEventListener("click", () => {
+      for (let i = 1; i <= pageCount; i++) selected.add(i);
+      range.value = formatPageRanges([...selected]);
+      syncButtons();
+      refresh();
+    });
+    $("[data-select-none]").addEventListener("click", () => {
+      selected.clear();
+      range.value = "";
+      syncButtons();
+      refresh();
+    });
+    modes.forEach((m) => m.addEventListener("change", refresh));
+    nInput.addEventListener("input", refresh);
+
+    /* ---------- thumbnails (rendered only when scrolled into view) ---------- */
+
+    async function renderThumb(n: number, holder: HTMLElement) {
+      if (!viewer) return;
+      const doc = viewer;
+      try {
+        const page = await doc.getPage(n);
+        const base = page.getViewport({ scale: 1 });
+        const scale = 160 / base.width;
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(vp.width);
+        canvas.height = Math.ceil(vp.height);
+        canvas.setAttribute("aria-hidden", "true");
+        await page.render({ canvas, viewport: vp }).promise;
+        page.cleanup();
+        if (viewer === doc) holder.replaceChildren(canvas);
+      } catch {
+        holder.textContent = String(n);
+      }
+    }
+
+    function buildGrid() {
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue;
+            observer?.unobserve(e.target);
+            const holder = e.target.querySelector<HTMLElement>(".split-thumb")!;
+            void renderThumb(Number((e.target as HTMLElement).dataset.page), holder);
+          }
+        },
+        { rootMargin: "300px" },
+      );
+      const frag = document.createDocumentFragment();
+      for (let n = 1; n <= pageCount; n++) {
+        const li = document.createElement("li");
+        li.dataset.page = String(n);
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "split-page";
+        b.setAttribute("aria-pressed", "false");
+        b.setAttribute("aria-label", `Page ${n}`);
+        const thumb = document.createElement("span");
+        thumb.className = "split-thumb";
+        const label = document.createElement("span");
+        label.className = "micro num";
+        label.textContent = `Page ${n}`;
+        b.append(thumb, label);
+        b.addEventListener("click", () => togglePage(n));
+        li.append(b);
+        frag.append(li);
+        buttons.push(b);
+        observer.observe(li);
+      }
+      grid.append(frag);
+    }
+
+    /* ---------- loading a file ---------- */
+
+    async function open(f: File) {
+      reset();
+      if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") {
+        return fail("That is not a PDF file.");
+      }
+      say("Reading PDF…");
+      try {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        lib = await loadPdf(bytes);
+        pageCount = lib.getPageCount();
+        if (pageCount === 0) throw new PdfError("corrupt", "This PDF has no pages.");
+        file = f;
+        $("[data-name]").textContent = f.name;
+        $("[data-meta]").textContent = `${pageCount} ${pageCount === 1 ? "page" : "pages"} · ${formatBytes(f.size)}`;
+        main.hidden = false;
+        refresh();
+        buildGrid();
+        const pdfjs = await import("pdfjs-dist");
+        pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
+        // pdfjs may take ownership of the buffer, so give it its own copy.
+        task = pdfjs.getDocument({ data: bytes.slice() });
+        viewer = await task.promise;
+        say(`Loaded ${pageCount} pages.`);
+      } catch (error) {
+        const e = toPdfError(error);
+        const keepGoing = lib && file; // pages still splittable even if previews fail
+        if (keepGoing && e.kind === "corrupt" && !viewer) {
+          say("Previews are not available for this file, but you can still split it.");
+          return;
+        }
+        reset();
+        fail(e.message);
+      }
+    }
+
+    root.addEventListener("files-selected", (event) => {
+      const f = (event as CustomEvent<{ files: File[] }>).detail.files[0];
+      if (f) void open(f);
+    });
+    $("[data-clear]").addEventListener("click", () => {
+      if (!busy) reset();
+    });
+
+    /* ---------- splitting ---------- */
+
+    go.addEventListener("click", async () => {
+      if (busy || !lib || !file) return;
+      const m = mode();
+      const name = file.name;
+      busy = true;
+      refresh();
+      try {
+        if (m === "extract") {
+          const pages = [...selected].sort((a, b) => a - b);
+          say("Extracting…");
+          const bytes = await extractPages(lib, pages);
+          saveFile(new Blob([bytes as BlobPart], { type: "application/pdf" }), chunkFileName(name, pages, pageCount));
+        } else {
+          const chunks = planChunks(pageCount, m === "each" ? 1 : Number(nInput.value));
+          const parts = await splitIntoChunks(lib, chunks, (d, t) => say(`Splitting ${d} of ${t}…`));
+          await saveZip(
+            parts.map((p) => ({
+              name: chunkFileName(name, p.pages, pageCount),
+              blob: new Blob([p.bytes as BlobPart], { type: "application/pdf" }),
+            })),
+            `${name.replace(/\.pdf$/i, "") || "document"}-split.zip`,
+          );
+        }
+        say("Done. Your download should start now.");
+      } catch (error) {
+        fail(error instanceof Error ? error.message : "Splitting failed.");
+      }
+      busy = false;
+      refresh();
+    });
+  }
+</script>

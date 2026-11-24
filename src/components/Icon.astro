@@ -1,0 +1,107 @@
+---
+import mapPin from "lucide-static/icons/map-pin.svg?raw";
+import camera from "lucide-static/icons/camera.svg?raw";
+import calendar from "lucide-static/icons/calendar.svg?raw";
+import fileText from "lucide-static/icons/file-text.svg?raw";
+import shieldCheck from "lucide-static/icons/shield-check.svg?raw";
+import eye from "lucide-static/icons/eye.svg?raw";
+import clock from "lucide-static/icons/clock.svg?raw";
+import hash from "lucide-static/icons/hash.svg?raw";
+import user from "lucide-static/icons/user.svg?raw";
+import check from "lucide-static/icons/check.svg?raw";
+import triangleAlert from "lucide-static/icons/triangle-alert.svg?raw";
+import x from "lucide-static/icons/x.svg?raw";
+import image from "lucide-static/icons/image.svg?raw";
+import minimize2 from "lucide-static/icons/minimize-2.svg?raw";
+import fileImage from "lucide-static/icons/file-image.svg?raw";
+import crop from "lucide-static/icons/crop.svg?raw";
+import music from "lucide-static/icons/music.svg?raw";
+import sun from "lucide-static/icons/sun.svg?raw";
+import moon from "lucide-static/icons/moon.svg?raw";
+import lock from "lucide-static/icons/lock.svg?raw";
+import upload from "lucide-static/icons/upload.svg?raw";
+import menu from "lucide-static/icons/menu.svg?raw";
+import chevronDown from "lucide-static/icons/chevron-down.svg?raw";
+import arrowRight from "lucide-static/icons/arrow-right.svg?raw";
+import download from "lucide-static/icons/download.svg?raw";
+import chevronRight from "lucide-static/icons/chevron-right.svg?raw";
+
+export type IconName =
+  | "map-pin"
+  | "camera"
+  | "calendar"
+  | "file-text"
+  | "shield-check"
+  | "eye"
+  | "clock"
+  | "hash"
+  | "user"
+  | "check"
+  | "triangle-alert"
+  | "x"
+  | "image"
+  | "minimize-2"
+  | "file-image"
+  | "crop"
+  | "music"
+  | "sun"
+  | "moon"
+  | "lock"
+  | "upload"
+  | "menu"
+  | "chevron-down"
+  | "arrow-right"
+  | "download"
+  | "chevron-right";
+
+interface Props {
+  name: IconName;
+  size?: number;
+  strokeWidth?: number;
+  class?: string;
+}
+
+const { name, size = 20, strokeWidth = 1.75, class: className } = Astro.props;
+
+const icons: Record<IconName, string> = {
+  "map-pin": mapPin,
+  camera,
+  calendar,
+  "file-text": fileText,
+  "shield-check": shieldCheck,
+  eye,
+  clock,
+  hash,
+  user,
+  check,
+  "triangle-alert": triangleAlert,
+  x,
+  image,
+  "minimize-2": minimize2,
+  "file-image": fileImage,
+  crop,
+  music,
+  sun,
+  moon,
+  lock,
+  upload,
+  menu,
+  "chevron-down": chevronDown,
+  "arrow-right": arrowRight,
+  download,
+  "chevron-right": chevronRight,
+};
+
+const svg = icons[name]
+  .replace(/<!--[\s\S]*?-->/g, "")
+  .replace(/\s*class="[^"]*"/, "")
+  .replace(/\swidth="24"/, ` width="${size}"`)
+  .replace(/\sheight="24"/, ` height="${size}"`)
+  .replace(/\sstroke-width="2"/, ` stroke-width="${strokeWidth}"`)
+  .replace(
+    "<svg",
+    `<svg class="icon${className ? ` ${className}` : ""}" aria-hidden="true" focusable="false"`,
+  );
+---
+
+<Fragment set:html={svg} />

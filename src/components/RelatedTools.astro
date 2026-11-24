@@ -1,0 +1,31 @@
+---
+import type { Tool } from "../lib/tools";
+import Icon from "./Icon.astro";
+import ToolIcon from "./ToolIcon.astro";
+
+interface Props {
+  tools: Tool[];
+}
+
+const { tools } = Astro.props;
+---
+
+{tools.length > 0 && (
+  <section class="related" aria-labelledby="related-heading">
+    <h2 id="related-heading">Related tools</h2>
+    <ul class="related-list">
+      {tools.map((tool) => (
+        <li>
+          <a href={tool.url}>
+            <span class="related-list__icon"><ToolIcon icon={tool.icon} /></span>
+            <span class="related-list__text">
+              <span class="related-list__name">{tool.name}</span>
+              <span class="related-list__desc">{tool.short}</span>
+            </span>
+            <Icon name="arrow-right" size={18} class="related-list__arrow" />
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+)}

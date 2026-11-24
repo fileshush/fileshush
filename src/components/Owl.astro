@@ -1,0 +1,105 @@
+---
+/**
+ * "Hush" the owl: an original flat mascot.
+ * Four states share one drawing, with small parts swapped:
+ *   idle    – one wing raised to the beak ("shh")
+ *   found   – wide eyes, a location pin next to the owl
+ *   clean   – one eye winking, wings down
+ *   working – eyes looking sideways
+ * Colours come from CSS variables so the owl works in both themes.
+ */
+export type OwlState = "idle" | "found" | "clean" | "working";
+
+interface Props {
+  state?: OwlState;
+  size?: number;
+  label?: string;
+  class?: string;
+}
+
+const { state = "idle", size = 64, label, class: className } = Astro.props;
+
+// "found" is wider so the pin fits next to the owl.
+const vbWidth = state === "found" ? 84 : 64;
+const width = Math.round((size * vbWidth) / 64);
+const shift = state === "found" ? 2 : 0;
+---
+
+<svg
+  class:list={["owl", `owl--${state}`, className]}
+  width={width}
+  height={size}
+  viewBox={`0 0 ${vbWidth} 64`}
+  role={label ? "img" : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+  focusable="false"
+>
+  <g transform={`translate(${shift} 0)`}>
+    {/* body with ear tufts */}
+    <path
+      class="owl__body"
+      d="M10 34C10 22 14 12 16 8L26 16C30 15 34 15 38 16L48 8C50 12 54 22 54 34C54 50 44 58 32 58C20 58 10 50 10 34Z"
+    ></path>
+
+    {/* wings */}
+    <path
+      class="owl__wing"
+      d="M12 36C9 45 12 53 19 56C21 49 19 41 12 36Z"></path>
+    {state !== "idle" && (
+      <path
+        class="owl__wing"
+        d="M52 36C55 45 52 53 45 56C43 49 45 41 52 36Z"></path>
+    )}
+
+    {/* eyes */}
+    {state === "found" ? (
+      <>
+        <circle class="owl__eye" cx="22" cy="31" r="10"></circle>
+        <circle class="owl__eye" cx="42" cy="31" r="10"></circle>
+        <circle class="owl__pupil" cx="22" cy="31" r="2.8"></circle>
+        <circle class="owl__pupil" cx="42" cy="31" r="2.8"></circle>
+      </>
+    ) : state === "clean" ? (
+      <>
+        <circle class="owl__eye" cx="23" cy="31" r="8.5"></circle>
+        <circle class="owl__pupil" cx="23" cy="32" r="3.4"></circle>
+        <path class="owl__wink" d="M34 32Q41 38 48 32"></path>
+      </>
+    ) : state === "working" ? (
+      <>
+        <circle class="owl__eye" cx="23" cy="31" r="8.5"></circle>
+        <circle class="owl__eye" cx="41" cy="31" r="8.5"></circle>
+        <circle class="owl__pupil" cx="27" cy="30" r="3.4"></circle>
+        <circle class="owl__pupil" cx="45" cy="30" r="3.4"></circle>
+      </>
+    ) : (
+      <>
+        <circle class="owl__eye" cx="23" cy="31" r="8.5"></circle>
+        <circle class="owl__eye" cx="41" cy="31" r="8.5"></circle>
+        <circle class="owl__pupil" cx="23" cy="32" r="3.4"></circle>
+        <circle class="owl__pupil" cx="41" cy="32" r="3.4"></circle>
+      </>
+    )}
+
+    {/* beak */}
+    <path class="owl__beak" d="M29.5 40H34.5L32 46Z"></path>
+
+    {/* raised wing for the "shh" gesture, drawn over the beak */}
+    {state === "idle" && (
+      <path
+        class="owl__wing owl__wing--raised"
+        d="M49 58C38 58 30 50 30 41C30 37.5 33 36.5 35 38.5C40 43 47 46 49 52C50 55 50 56.5 49 58Z"
+      ></path>
+    )}
+  </g>
+
+  {/* location pin, only when something was found */}
+  {state === "found" && (
+    <path
+      class="owl__pin"
+      fill-rule="evenodd"
+      d="M69 5C63.5 5 60 9 60 13.5C60 19 69 26 69 26C69 26 78 19 78 13.5C78 9 74.5 5 69 5ZM69 10.3A3.2 3.2 0 1 0 69.01 10.3Z"
+    ></path>
+  )}
+</svg>

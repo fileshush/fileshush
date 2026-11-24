@@ -1,0 +1,200 @@
+---
+import DropZone from "./DropZone.astro";
+---
+
+<div class="mp3-tool" data-mp3-tool>
+  <DropZone
+    id="mp3-input"
+    accept=".mp4,.mov,.webm,.mkv,.wav,.m4a,.ogg,.flac,video/*,audio/*"
+    multiple={false}
+    label="Drop a video or audio file here"
+    hint="or choose a file · MP4, MOV, WEBM, MKV, WAV, M4A, OGG or FLAC"
+  />
+
+  <p class="micro mp3-note">
+    The first time, your browser downloads about 30 MB of converter <em>code</em> from jsDelivr (a public code host).
+    Your file is never uploaded. It stays on this device.
+  </p>
+
+  <div class="mp3-panel" data-panel hidden>
+    <p class="exif-message" data-large hidden>
+      This file is 1 GB or more. Big files can be slow or fail, especially on a phone. A computer works best.
+    </p>
+    <h3 class="exif-file__name" data-name></h3>
+    <p class="micro num" data-size></p>
+
+    <fieldset class="exif-options">
+      <legend>MP3 quality</legend>
+      <label class="exif-option"><input type="radio" name="mp3-bitrate" value="128" /><span><strong>128 kbps</strong><span>Small. Fine for speech.</span></span></label>
+      <label class="exif-option"><input type="radio" name="mp3-bitrate" value="192" checked /><span><strong>192 kbps</strong><span>Good all-round choice.</span></span></label>
+      <label class="exif-option"><input type="radio" name="mp3-bitrate" value="320" /><span><strong>320 kbps</strong><span>Best quality, biggest file.</span></span></label>
+    </fieldset>
+
+    <fieldset class="mp3-trim">
+      <legend>Trim (optional)</legend>
+      <label>Start <input type="text" inputmode="decimal" placeholder="0:00" data-start autocomplete="off" /></label>
+      <label>End <input type="text" inputmode="decimal" placeholder="end of file" data-end autocomplete="off" /></label>
+      <span class="micro">Use seconds (90) or minutes:seconds (1:30).</span>
+    </fieldset>
+
+    <p class="micro num" data-estimate hidden></p>
+
+    <div class="exif-actions">
+      <button class="btn btn--primary" type="button" data-convert>Convert to MP3</button>
+      <button class="btn btn--ghost" type="button" data-clear>Start over</button>
+    </div>
+
+    <div class="mp3-progress" data-progress hidden>
+      <progress max="100" value="0" data-bar></progress>
+      <span class="micro" data-progress-text></span>
+    </div>
+
+    <p class="exif-message exif-message--error" data-error role="alert" hidden></p>
+
+    <div class="exif-file__actions" data-result hidden>
+      <span class="micro num" data-result-size></span>
+      <button class="btn btn--primary" type="button" data-download>Download MP3</button>
+    </div>
+  </div>
+
+  <p class="visually-hidden" role="status" aria-live="polite" data-status></p>
+</div>
+
+<style>
+  .mp3-tool { display: grid; gap: 1rem; }
+  .mp3-panel { display: grid; gap: 1rem; }
+  .mp3-note { margin: 0; }
+  .mp3-trim { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; border: 0; padding: 0; margin: 0; }
+  .mp3-trim legend { font-weight: 600; margin-bottom: 0.5rem; }
+  .mp3-trim label { display: flex; gap: 0.5rem; align-items: center; }
+  .mp3-trim input { width: 7rem; padding: 0.4rem 0.6rem; font: inherit; }
+  .mp3-progress { display: grid; gap: 0.25rem; }
+  .mp3-progress progress { width: 100%; height: 0.75rem; }
+</style>
+
+<script>
+  import {
+    convertToMp3, estimateMp3Bytes, isLargeFile, loadFfmpeg, outputFileName,
+    parseTrim, trimmedSeconds, fileExtension, ACCEPTED_EXTENSIONS,
+  } from "../tools/mp3";
+  import { saveFile } from "../lib/download";
+  import { formatBytes } from "../lib/formatBytes";
+
+  const root = document.querySelector<HTMLElement>("[data-mp3-tool]");
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const q = <T extends HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const panel = q("[data-panel]");
+    const startInput = q<HTMLInputElement>("[data-start]");
+    const endInput = q<HTMLInputElement>("[data-end]");
+    const convertBtn = q<HTMLButtonElement>("[data-convert]");
+    const errorEl = q("[data-error]");
+    const progressBox = q("[data-progress]");
+    const bar = q<HTMLProgressElement>("[data-bar]");
+    const progressText = q("[data-progress-text]");
+    const resultBox = q("[data-result]");
+    const estimateEl = q("[data-estimate]");
+    const statusEl = q("[data-status]");
+
+    let file: File | null = null;
+    let duration: number | undefined;
+    let result: Blob | null = null;
+    let busy = false;
+
+    const bitrate = () => Number(root.querySelector<HTMLInputElement>('input[name="mp3-bitrate"]:checked')?.value ?? 192);
+    const showError = (msg: string) => { errorEl.textContent = msg; errorEl.hidden = !msg; };
+
+    function readDuration(f: File) {
+      // Browser can often tell the length without ffmpeg. Only used for the size estimate.
+      const media = document.createElement(f.type.startsWith("video") ? "video" : "audio");
+      const url = URL.createObjectURL(f);
+      media.preload = "metadata";
+      media.onloadedmetadata = () => {
+        if (file === f && Number.isFinite(media.duration)) duration = media.duration;
+        URL.revokeObjectURL(url);
+        updateEstimate();
+      };
+      media.onerror = () => URL.revokeObjectURL(url);
+      media.src = url;
+    }
+
+    function updateEstimate() {
+      estimateEl.hidden = true;
+      try {
+        const secs = trimmedSeconds(parseTrim(startInput.value, endInput.value, duration), duration);
+        if (secs !== null && secs > 0) {
+          estimateEl.textContent = `About ${formatBytes(estimateMp3Bytes(bitrate(), secs))} as MP3 (estimate).`;
+          estimateEl.hidden = false;
+        }
+      } catch { /* invalid trim is reported on Convert */ }
+    }
+
+    function reset() {
+      file = null; duration = undefined; result = null;
+      panel.hidden = true; resultBox.hidden = true; progressBox.hidden = true;
+      showError("");
+      startInput.value = ""; endInput.value = "";
+    }
+
+    function setFile(f: File) {
+      reset();
+      file = f;
+      const ext = fileExtension(f.name);
+      q("[data-name]").textContent = f.name;
+      q("[data-size]").textContent = formatBytes(f.size);
+      q("[data-large]").hidden = !isLargeFile(f.size);
+      panel.hidden = false;
+      if (ext && !ACCEPTED_EXTENSIONS.includes(ext)) {
+        showError(`.${ext} is not on the supported list. We will still try, but it may fail.`);
+      }
+      readDuration(f);
+      updateEstimate();
+    }
+
+    async function convert() {
+      if (!file || busy) return;
+      showError(""); resultBox.hidden = true; result = null;
+      let trim;
+      try { trim = parseTrim(startInput.value, endInput.value, duration); }
+      catch (e) { showError(e instanceof Error ? e.message : "Check the trim times."); return; }
+
+      busy = true; convertBtn.disabled = true;
+      progressBox.hidden = false; bar.removeAttribute("value");
+      progressText.textContent = "Downloading converter code (first time only)…";
+      statusEl.textContent = "Loading converter.";
+      try {
+        await loadFfmpeg(); // only now, after a file was chosen
+        progressText.textContent = "Converting…";
+        bar.value = 0;
+        result = await convertToMp3(file, {
+          bitrate: bitrate(), trim,
+          onProgress: (r) => {
+            const pct = Math.max(0, Math.min(100, Math.round(r * 100)));
+            bar.value = pct; progressText.textContent = `Converting… ${pct}%`;
+          },
+        });
+        bar.value = 100; progressText.textContent = "Done.";
+        q("[data-result-size]").textContent = `${outputFileName(file.name)} · ${formatBytes(result.size)}`;
+        resultBox.hidden = false;
+        statusEl.textContent = "Conversion finished. Download is ready.";
+      } catch (e) {
+        progressBox.hidden = true;
+        showError(e instanceof Error ? e.message : "Conversion failed.");
+      } finally {
+        busy = false; convertBtn.disabled = false;
+      }
+    }
+
+    root.addEventListener("files-selected", (event) => {
+      const f = (event as CustomEvent<{ files: File[] }>).detail.files[0];
+      if (f && !busy) setFile(f);
+    });
+    convertBtn.addEventListener("click", () => void convert());
+    q("[data-download]").addEventListener("click", () => {
+      if (file && result) saveFile(result, outputFileName(file.name));
+    });
+    q("[data-clear]").addEventListener("click", () => { if (!busy) reset(); });
+    root.addEventListener("input", updateEstimate);
+  }
+</script>

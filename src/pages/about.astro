@@ -1,0 +1,89 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { site } from "../config";
+---
+
+<BaseLayout
+  title="About"
+  description={`About ${site.name} — file tools that run in your browser and never upload your files.`}
+  canonicalPath="/about"
+>
+  <div class="page">
+    <div class="container">
+      <div class="page__intro">
+        <p class="micro">About</p>
+        <h1>File tools that respect your privacy</h1>
+        <p class="lede">
+          {site.name} is a small independent project with one simple idea: file
+          tools should not require you to hand your photos and documents to a
+          stranger's server.
+        </p>
+      </div>
+
+      <div class="prose">
+        <h2>Why this site exists</h2>
+        <p>
+          Most online file tools work the same way: you upload a file, a server
+          processes it, and you download the result. That is convenient, but it
+          means your bank statement, ID scan or family photo sits on someone
+          else's computer, even if only for a minute.
+        </p>
+        <p>
+          Modern browsers can do most of that work locally. This site exists to
+          use that ability for the everyday jobs people actually search for —
+          compressing a photo for a form, removing location data before sharing
+          a picture, or splitting a PDF without uploading it anywhere.
+        </p>
+
+        <h2>What we believe</h2>
+        <ul>
+          <li>
+            <strong>Your files are yours.</strong> Processing happens on your
+            device, and the files are never sent to us.
+          </li>
+          <li>
+            <strong>No accounts.</strong> You should not need to create a login
+            or give an email address to resize an image.
+          </li>
+          <li>
+            <strong>Honest limits.</strong> If a tool cannot do something, the
+            page says so instead of hiding it in small print.
+          </li>
+          <li>
+            <strong>Clean ads only.</strong> When ads are added, they will be
+            normal banners, never pop-ups or fake download buttons.
+          </li>
+        </ul>
+
+        <h2>What we do not do</h2>
+        <ul>
+          <li>We do not upload, store or look at the files you open.</li>
+          <li>We do not ask for your name, email or phone number.</li>
+          <li>We do not sell personal data.</li>
+          <li>
+            We do not offer tools that download from YouTube or other platforms
+            — those break copyright rules.
+          </li>
+        </ul>
+
+        <h2>Who is behind it</h2>
+        <p>
+          {site.name} is built by {site.maker}, an independent developer in{" "}
+          {site.location}. It started from a simple frustration: every time a
+          document had to be split or a photo cleaned, the only quick options
+          asked for an upload.
+        </p>
+        <p>
+          If something is broken, confusing or missing, the contact page is the
+          best place to say so.
+        </p>
+
+        <p>
+          <a class="btn btn--ghost" href="/how-we-protect-your-files">
+            How we protect your files
+          </a>
+        </p>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

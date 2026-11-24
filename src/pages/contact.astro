@@ -1,0 +1,74 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { site } from "../config";
+
+const email = site.contactEmail;
+---
+
+<BaseLayout
+  title="Contact"
+  description={`Contact ${site.name}. Questions about the tools, privacy or a bug — email us. No file uploads needed.`}
+  canonicalPath="/contact"
+>
+  <div class="page">
+    <div class="container">
+      <div class="page__intro">
+        <p class="micro">Contact</p>
+        <h1>Get in touch</h1>
+        <p class="lede">
+          Questions, bug reports and privacy concerns are welcome. One person
+          reads the inbox, so a reply can take a few days.
+        </p>
+      </div>
+
+      <div class="prose">
+        <p>
+          Email: <a href={`mailto:${email}`}>{email}</a>
+        </p>
+
+        <p>
+          <a class="btn btn--primary" href={`mailto:${email}`}>
+            Send an email
+          </a>
+        </p>
+
+        <h2>Before you write</h2>
+        <ul>
+          <li>
+            <strong>Do not send your files.</strong> The tools run on your
+            device, so we cannot open a file for you. Email attachments are not
+            needed and will not be read.
+          </li>
+          <li>
+            <strong>Include the tool name and browser.</strong> For example:
+            “PDF splitter, Chrome on Android”. That makes a bug much easier to
+            find.
+          </li>
+          <li>
+            <strong>We cannot recover deleted files.</strong> Always keep a copy
+            of the original before you process anything important.
+          </li>
+        </ul>
+
+        <h2>Common questions</h2>
+        <ul>
+          <li>
+            <strong>Are my files uploaded?</strong> No. See{" "}
+            <a href="/how-we-protect-your-files">how we protect your files</a>
+            for the details and a way to check it yourself.
+          </li>
+          <li>
+            <strong>Can I suggest a tool?</strong> Yes. Describe the job you are
+            trying to do, not just the tool name — it helps to know the real
+            problem.
+          </li>
+          <li>
+            <strong>Can I advertise here?</strong> Ask by email with a short
+            description of the ad format. Pop-ups, redirects and misleading
+            buttons are not accepted.
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

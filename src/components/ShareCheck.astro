@@ -1,0 +1,131 @@
+---
+import type { ShareCheckIcon, ShareCheckItem } from "../lib/shareCheck";
+import { shareStatusLabels, shareStatusTone } from "../lib/shareCheck";
+import Icon, { type IconName } from "./Icon.astro";
+import Owl from "./Owl.astro";
+
+interface Props {
+  items: ShareCheckItem[];
+  title?: string;
+  /** Number of things the check found. Defaults to the rows still needing attention. */
+  found?: number;
+  /** Labels the panel as sample data. */
+  example?: boolean;
+  headingTag?: "h2" | "h3";
+}
+
+const {
+  items,
+  title = "Photo check",
+  found,
+  example = false,
+  headingTag = "h3",
+} = Astro.props;
+const Heading = headingTag;
+
+const uid = `share-check-${Math.random().toString(36).slice(2, 8)}`;
+
+const open = items.filter(
+  (item) => shareStatusTone[item.status] !== "ok",
+).length;
+const foundCount = found ?? open;
+const allResolved = open === 0;
+// Everything that was found has been dealt with: say "removed", in green.
+const removedAll = allResolved && foundCount > 0;
+
+const iconMap: Record<ShareCheckIcon, IconName> = {
+  location: "map-pin",
+  camera: "camera",
+  calendar: "calendar",
+  file: "file-text",
+  eye: "eye",
+  clock: "clock",
+  hash: "hash",
+  user: "user",
+};
+
+const statusIcon = {
+  risk: "triangle-alert",
+  warn: "eye",
+  ok: "check",
+} as const;
+---
+
+<section class="share-check" aria-labelledby={`${uid}-title`}>
+  <div class="share-check__head">
+    <Owl
+      state={foundCount > 0 ? "found" : "clean"}
+      size={44}
+      class="share-check__owl"
+    />
+    <div class="share-check__heading">
+      <Heading class="share-check__title" id={`${uid}-title`}>{title}</Heading>
+      {example && <p class="micro">Example</p>}
+    </div>
+    <p
+      class:list={[
+        "pill",
+        foundCount > 0 && !removedAll ? "pill--risk" : "pill--ok",
+        "share-check__summary",
+      ]}
+    >
+      {removedAll
+        ? `${foundCount} removed`
+        : foundCount > 0
+          ? `${foundCount} found`
+          : "All clear"}
+    </p>
+  </div>
+
+  <ul class="share-check__list">
+    {items.map((item, index) => {
+      const tone = shareStatusTone[item.status];
+      // "Removed → Removed" would be read out twice, so hide the pill from
+      // screen readers when the value text already says the same thing.
+      const pillRepeatsValue =
+        item.after.trim().toLowerCase() ===
+        shareStatusLabels[item.status].toLowerCase();
+      return (
+        <li
+          class:list={["share-check__row", `share-check__row--${tone}`]}
+          style={`--i:${index}`}
+        >
+          <span class="share-check__icon" aria-hidden="true">
+            <Icon name={iconMap[item.icon ?? "file"]} size={18} />
+          </span>
+
+          <span class="share-check__body">
+            <span class="share-check__label">{item.label}</span>
+            <span class="share-check__values num">
+              <span class="share-check__before">{item.before}</span>
+              <span class="share-check__arrow" aria-hidden="true">→</span>
+              <span class="share-check__after">{item.after}</span>
+            </span>
+            {item.note && <span class="share-check__note">{item.note}</span>}
+          </span>
+
+          <span
+            class:list={["pill", `pill--${tone}`]}
+            aria-hidden={pillRepeatsValue ? "true" : undefined}
+          >
+            <Icon name={statusIcon[tone]} size={13} strokeWidth={2.4} />
+            {shareStatusLabels[item.status]}
+          </span>
+        </li>
+      );
+    })}
+  </ul>
+
+  {allResolved && (
+    <div class="share-check__done" style={`--i:${items.length}`}>
+      <Owl state="clean" size={48} />
+      <p class="share-check__done-text">
+        <strong>All clear.</strong> This file is safe to share.
+      </p>
+      <button class="btn btn--primary btn--small" type="button" disabled>
+        <Icon name="download" size={16} />
+        Download
+      </button>
+    </div>
+  )}
+</section>

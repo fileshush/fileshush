@@ -1,0 +1,115 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { site } from "../config";
+---
+
+<BaseLayout
+  title="How we protect your files"
+  description={`How ${site.name} keeps your files on your device, what we load from the internet, and how to check for yourself that nothing is uploaded.`}
+  canonicalPath="/how-we-protect-your-files"
+>
+  <div class="page">
+    <div class="container">
+      <div class="page__intro">
+        <p class="micro">Trust</p>
+        <h1>How we protect your files</h1>
+        <p class="lede">
+          “Processed on your device” is easy to say. This page explains what it
+          actually means, what we do load, and how you can verify it in about a
+          minute.
+        </p>
+      </div>
+
+      <div class="prose">
+        <h2>The short version</h2>
+        <ul>
+          <li>Your files are opened and processed inside your browser.</li>
+          <li>There is no upload step, because there is no server for files.</li>
+          <li>You can check this yourself in your browser's Network tab. Offline support is coming.</li>
+        </ul>
+
+        <h2>What “processed on your device” means</h2>
+        <p>
+          A website can ask your browser to read a file and change it without
+          sending it anywhere. This is how the tools are being built. The page is
+          the program: when it loads, your browser downloads the tool code.
+          After that, the code reads the file directly from your device, does
+          the work, and gives you a new file to save.
+        </p>
+        <p>
+          Think of it like a calculator on a web page. The page loads once, then
+          the maths happens on your computer. Your numbers are not sent away.
+        </p>
+
+        <h2>Check it yourself</h2>
+        <p>
+          The tools are still being built, so these checks apply once a tool is
+          live. Each tool page says whether it is ready.
+        </p>
+        <ol>
+          <li>
+            Open a tool page and load your file. Let the tool finish once.
+          </li>
+          <li>
+            Turn off Wi-Fi and mobile data. Try the same job again. If it still
+            works, the processing is local. (This is a quick check, not offline
+            support. Real offline support is coming.)
+          </li>
+          <li>
+            On a computer, open the browser's developer tools (F12 or
+            right-click → Inspect), go to the Network tab, and watch the
+            requests while you use a tool. You will see page files and code
+            being downloaded, but not your document being sent out.
+          </li>
+        </ol>
+
+        <h2>What we load from the internet</h2>
+        <p>
+          The page itself, styles, images and tool code are downloaded from the
+          site's hosting. Some tools use open-source libraries, which may be
+          loaded from a content delivery network (CDN) such as jsDelivr or
+          unpkg. That is a download of code, not an upload of your files.
+        </p>
+        <p>
+          The Video to MP3 tool downloads a conversion engine (around 30 MB of
+          code) from cdn.jsdelivr.net, a public third-party CDN. It only starts
+          after you choose a file and press Convert. This is the only outside
+          request the tool makes. It is code coming in. Your video is never
+          sent. Like any CDN, jsDelivr can see your IP address and that you
+          asked for those code files. We use a CDN because the engine is too
+          large for our hosting's per-file limit. In your browser's Network
+          tab you will see only downloads of those two code files.
+        </p>
+
+        <h2>What we never do</h2>
+        <ul>
+          <li>We never send your files to a server for processing.</li>
+          <li>We never store your files.</li>
+          <li>We never ask for an account or an email to use a tool.</li>
+          <li>We never sell personal information.</li>
+        </ul>
+
+        <h2>Ads and analytics</h2>
+        <p>
+          The site does not show ads at the moment. If ads are added, they will
+          be normal banners or native ads, clearly labelled, and never placed
+          between you and a download button. Advertising partners may use
+          cookies, which is why a consent banner will appear where the law
+          requires one.
+        </p>
+        <p>
+          Analytics, if enabled, is aggregate and privacy-friendly. It does not
+          receive the contents of your files. The{" "}
+          <a href="/privacy-policy">privacy policy</a> has the details.
+        </p>
+
+        <h2>Still not sure?</h2>
+        <p>
+          That is a healthy attitude. Use the checks above, or open the
+          developer tools and watch the network requests yourself. If something
+          looks wrong, please <a href="/contact">tell us</a>.
+        </p>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

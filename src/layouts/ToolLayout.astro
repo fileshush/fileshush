@@ -1,0 +1,161 @@
+---
+import BaseLayout from "./BaseLayout.astro";
+import PrivacyBadge from "../components/PrivacyBadge.astro";
+import AdSlot from "../components/AdSlot.astro";
+import FAQ from "../components/FAQ.astro";
+import RelatedTools from "../components/RelatedTools.astro";
+import { site } from "../config";
+import { getRelatedTools, getTool } from "../lib/tools";
+import { getToolContent } from "../lib/toolContent";
+
+interface Props {
+  slug: string;
+}
+
+const { slug } = Astro.props;
+const tool = getTool(slug);
+
+if (!tool) throw new Error(`Unknown tool "${slug}"`);
+
+const content = getToolContent(slug);
+const pageTitle = `${tool.name} — Private, in your browser`;
+const related = getRelatedTools(slug, 3);
+
+const ready = tool.status === "ready";
+
+const webAppSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: tool.name,
+  description: content.metaDescription,
+  url: new URL(`${tool.url}/`, Astro.site).toString(),
+  applicationCategory: "MultimediaApplication",
+  operatingSystem: "Any modern browser",
+  browserRequirements: "Requires JavaScript",
+  isAccessibleForFree: true,
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+};
+
+const breadcrumbSchema = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: new URL("/", Astro.site).toString() },
+    { "@type": "ListItem", position: 2, name: "Tools", item: new URL("/#tools", Astro.site).toString() },
+    { "@type": "ListItem", position: 3, name: tool.name, item: new URL(`${tool.url}/`, Astro.site).toString() },
+  ],
+};
+
+// WebApplication (with its free offer) only once the tool actually works.
+const structuredData = ready
+  ? [breadcrumbSchema, webAppSchema]
+  : [breadcrumbSchema];
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={content.metaDescription}
+  canonicalPath={tool.url}
+  structuredData={structuredData}
+>
+  <article class="tool-page">
+    <div class="container">
+      <nav class="breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/">Home</a></li>
+          <li><a href="/#tools">Tools</a></li>
+          <li aria-current="page">{tool.name}</li>
+        </ol>
+      </nav>
+
+      <header class="tool-intro">
+        <p class="micro">{tool.category}</p>
+        <h1>{content.h1}</h1>
+        <p class="lede">{content.subtitle}</p>
+      </header>
+
+      <section class="tool-panel" aria-label={tool.name}>
+        <slot />
+      </section>
+
+      <PrivacyBadge ready={ready} />
+
+      {content.note && <p class="tool-note">{content.note}</p>}
+
+      <AdSlot />
+
+      <div class="tool-body">
+        <div class="tool-text">
+          <section class="prose-block" id="how-to" aria-labelledby="how-to-heading">
+            <h2 id="how-to-heading">{ready ? "How to use this tool" : "How it will work"}</h2>
+            {!ready && (
+              <p class="tool-note tool-note--flush">
+                This tool is not live yet. These steps describe how it will work.
+              </p>
+            )}
+            <ol class="steps">
+              {content.howTo.map((step) => <li>{step}</li>)}
+            </ol>
+          </section>
+
+          <section class="prose-block" id="why" aria-labelledby="why-heading">
+            <h2 id="why-heading">Why use it</h2>
+            <ul class="why-list">
+              {content.why.map((item) => (
+                <li>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section class="prose-block" id="limits" aria-labelledby="limits-heading">
+            <h2 id="limits-heading">
+              {ready ? "What this tool does — and doesn't do" : "What this tool will do — and won't"}
+            </h2>
+            <div class="limits-grid">
+              <div class="limits-card">
+                <h3>{ready ? "It can" : "It will"}</h3>
+                <ul class="check-list">
+                  {content.does.map((item) => <li>{item}</li>)}
+                </ul>
+              </div>
+              <div class="limits-card">
+                <h3>{ready ? "It can't" : "It won't"}</h3>
+                <ul class="x-list">
+                  {content.doesnt.map((item) => <li>{item}</li>)}
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <div id="faq">
+            <FAQ items={content.faqs} />
+          </div>
+
+          <div id="related">
+            <RelatedTools tools={related} />
+          </div>
+
+          <AdSlot />
+        </div>
+
+        <aside class="toc" aria-label="On this page">
+          <p class="micro">On this page</p>
+          <ul>
+            <li><a href="#how-to">{ready ? "How to use this tool" : "How it will work"}</a></li>
+            <li><a href="#why">Why use it</a></li>
+            <li><a href="#limits">{ready ? "What it can and can't do" : "What it will and won't do"}</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#related">Related tools</a></li>
+          </ul>
+        </aside>
+      </div>
+    </div>
+  </article>
+</BaseLayout>

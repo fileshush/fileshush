@@ -1,0 +1,489 @@
+---
+import DropZone from "./DropZone.astro";
+import Icon from "./Icon.astro";
+import Owl from "./Owl.astro";
+---
+
+<div class="exif-tool" data-exif-tool>
+  <DropZone
+    id="exif-input"
+    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+    label="Drop photos here"
+    hint="or choose files · JPG, PNG or WebP"
+  />
+
+  <div class="exif-controls" data-controls hidden>
+    <fieldset class="exif-options">
+      <legend>What to remove</legend>
+      <label class="exif-option">
+        <input type="radio" name="exif-mode" value="all" checked />
+        <span>
+          <strong>Everything</strong>
+          <span>Location, camera, date, software and every other hidden field.</span>
+        </span>
+      </label>
+      <label class="exif-option">
+        <input type="radio" name="exif-mode" value="keep" />
+        <span>
+          <strong>Everything except the date and orientation</strong>
+          <span>JPEG only. PNG and WebP files are always cleaned fully.</span>
+        </span>
+      </label>
+    </fieldset>
+
+    <div class="exif-actions">
+      <button class="btn btn--primary" type="button" data-clean>Remove metadata</button>
+      <button class="btn" type="button" data-zip hidden>Download all as ZIP</button>
+      <button class="btn btn--ghost" type="button" data-clear>Start over</button>
+    </div>
+  </div>
+
+  <p class="visually-hidden" role="status" aria-live="polite" data-status></p>
+  <ul class="exif-files" data-files></ul>
+
+  <!-- Drawings cloned by the script, so the owl and icons live in one place. -->
+  <template data-owl="found"><Owl state="found" size={44} /></template>
+  <template data-owl="clean"><Owl state="clean" size={44} /></template>
+  <template data-owl="working"><Owl state="working" size={44} /></template>
+  <template data-owl="idle"><Owl state="idle" size={44} /></template>
+  <template data-icon="map-pin"><Icon name="map-pin" size={18} /></template>
+  <template data-icon="camera"><Icon name="camera" size={18} /></template>
+  <template data-icon="calendar"><Icon name="calendar" size={18} /></template>
+  <template data-icon="user"><Icon name="user" size={18} /></template>
+  <template data-icon="eye"><Icon name="eye" size={18} /></template>
+  <template data-icon="file-text"><Icon name="file-text" size={18} /></template>
+  <template data-icon="check"><Icon name="check" size={13} strokeWidth={2.4} /></template>
+  <template data-icon="triangle-alert"><Icon name="triangle-alert" size={13} strokeWidth={2.4} /></template>
+  <template data-icon="download"><Icon name="download" size={16} /></template>
+</div>
+
+<script>
+  import {
+    cleanFileName,
+    cleanImage,
+    formatCoordinates,
+    formatExifDate,
+    readMetadata,
+    type CleanResult,
+    type MetadataReport,
+  } from "../tools/exif";
+  import { saveFile, saveZip } from "../lib/download";
+  import { formatBytes } from "../lib/formatBytes";
+
+  type ItemState = "analyzing" | "found" | "clean-already" | "cleaning" | "done" | "error";
+
+  interface Item {
+    id: string;
+    file: File;
+    state: ItemState;
+    report?: MetadataReport;
+    result?: CleanResult;
+    keptTags?: boolean;
+    error?: string;
+    node?: HTMLLIElement;
+  }
+
+  type Tone = "risk" | "warn" | "ok";
+
+  interface Row {
+    icon: string;
+    label: string;
+    before: string;
+    after: string;
+    pill: string;
+    tone: Tone;
+    note?: string;
+  }
+
+  const root = document.querySelector<HTMLElement>("[data-exif-tool]");
+  if (root) init(root);
+
+  function init(root: HTMLElement) {
+    const list = root.querySelector<HTMLUListElement>("[data-files]")!;
+    const controls = root.querySelector<HTMLElement>("[data-controls]")!;
+    const cleanButton = root.querySelector<HTMLButtonElement>("[data-clean]")!;
+    const zipButton = root.querySelector<HTMLButtonElement>("[data-zip]")!;
+    const clearButton = root.querySelector<HTMLButtonElement>("[data-clear]")!;
+    const statusLine = root.querySelector<HTMLElement>("[data-status]")!;
+    const modeInputs = root.querySelectorAll<HTMLInputElement>('input[name="exif-mode"]');
+
+    const items: Item[] = [];
+    let busy = false;
+    let nextId = 1;
+
+    /* ---------- small DOM helpers ---------- */
+
+    function el<K extends keyof HTMLElementTagNameMap>(
+      tag: K,
+      className?: string,
+      ...children: (Node | string | null | undefined)[]
+    ): HTMLElementTagNameMap[K] {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      for (const child of children) {
+        if (child === null || child === undefined) continue;
+        node.append(child);
+      }
+      return node;
+    }
+
+    function clone(kind: "owl" | "icon", name: string, size?: number): Node {
+      const template = root!.querySelector<HTMLTemplateElement>(`template[data-${kind}="${name}"]`);
+      const node = template?.content.firstElementChild?.cloneNode(true) as SVGElement | undefined;
+      if (!node) return document.createTextNode("");
+      if (size && kind === "icon") {
+        node.setAttribute("width", String(size));
+        node.setAttribute("height", String(size));
+      }
+      return node;
+    }
+
+    function pill(text: string, tone: Tone | "neutral", icon?: string): HTMLElement {
+      return el("span", `pill pill--${tone}`, icon ? clone("icon", icon) : null, text);
+    }
+
+    function announce(message: string) {
+      statusLine.textContent = message;
+    }
+
+    function keepMode(): boolean {
+      return Array.from(modeInputs).some((input) => input.checked && input.value === "keep");
+    }
+
+    /* ---------- building the report rows ---------- */
+
+    function otherDataText(report: MetadataReport): string | null {
+      const parts: string[] = [];
+      if (report.hasXmp) parts.push("XMP");
+      if (report.hasIptc) parts.push("IPTC");
+      if (report.hasComments) parts.push("comments");
+      if (report.otherFieldCount > 0) parts.push(`${report.otherFieldCount} camera settings`);
+      return parts.length > 0 ? parts.join(", ") : null;
+    }
+
+    function rowsFor(item: Item): Row[] {
+      const report = item.report;
+      if (!report) return [];
+      const done = item.state === "done";
+      const kept = Boolean(item.keptTags);
+      const rows: Row[] = [];
+
+      if (report.gps) {
+        rows.push({
+          icon: "map-pin",
+          label: "Location",
+          before: formatCoordinates(report.gps),
+          after: done ? "Removed" : "Not yet removed",
+          pill: done ? "Removed" : "Exposed",
+          tone: done ? "ok" : "risk",
+          note: done ? undefined : "This photo contains your location.",
+        });
+      }
+
+      const camera = [report.make, report.model].filter(Boolean).join(" ");
+      if (camera) {
+        rows.push({
+          icon: "camera",
+          label: "Phone & camera",
+          before: camera,
+          after: done ? "Removed" : "Not yet removed",
+          pill: done ? "Removed" : "Review",
+          tone: done ? "ok" : "warn",
+        });
+      }
+
+      if (report.dateTaken) {
+        const keepsDate = done && kept;
+        rows.push({
+          icon: "calendar",
+          label: "Date taken",
+          before: formatExifDate(report.dateTaken),
+          after: done ? (keepsDate ? "Kept" : "Removed") : "Not yet removed",
+          pill: done ? (keepsDate ? "Kept" : "Removed") : "Review",
+          tone: done ? "ok" : "warn",
+        });
+      }
+
+      const author = [report.software, report.artist, report.copyright, report.description]
+        .filter(Boolean)
+        .join(" · ");
+      if (author) {
+        rows.push({
+          icon: "user",
+          label: "Author & software",
+          before: author,
+          after: done ? "Removed" : "Not yet removed",
+          pill: done ? "Removed" : "Review",
+          tone: done ? "ok" : "warn",
+        });
+      }
+
+      const other = otherDataText(report);
+      if (other) {
+        rows.push({
+          icon: "eye",
+          label: "Other hidden data",
+          before: other,
+          after: done ? "Removed" : "Not yet removed",
+          pill: done ? "Removed" : "Review",
+          tone: done ? "ok" : "warn",
+        });
+      }
+
+      if (done && item.result) {
+        const smaller = item.result.blob.size < item.file.size;
+        rows.push({
+          icon: "file-text",
+          label: "File size",
+          before: formatBytes(item.file.size),
+          after: formatBytes(item.result.blob.size),
+          pill: smaller ? "Reduced" : "OK",
+          tone: "ok",
+          note:
+            item.result.method === "lossless"
+              ? "Picture data copied unchanged. No quality loss."
+              : "Re-saved once to stay upright.",
+        });
+      }
+
+      return rows;
+    }
+
+    /* ---------- building one file card ---------- */
+
+    function renderItem(item: Item): HTMLLIElement {
+      const rows = rowsFor(item);
+      const removedCount = rows.filter((row) => row.label !== "File size").length;
+
+      let owl = "idle";
+      let summary: HTMLElement;
+      if (item.state === "analyzing") {
+        owl = "working";
+        summary = pill("Reading…", "neutral");
+      } else if (item.state === "cleaning") {
+        owl = "working";
+        summary = pill("Cleaning…", "neutral");
+      } else if (item.state === "found") {
+        owl = "found";
+        summary = pill(`${removedCount} found`, "risk");
+      } else if (item.state === "done") {
+        owl = "clean";
+        summary = pill(`${removedCount} removed`, "ok");
+      } else if (item.state === "clean-already") {
+        owl = "clean";
+        summary = pill("Already clean", "ok");
+      } else {
+        summary = pill("Error", "risk");
+      }
+
+      const title = el("h3", "share-check__title", item.file.name);
+      title.classList.add("exif-file__name");
+      const heading = el(
+        "div",
+        "share-check__heading",
+        title,
+        el("p", "micro num", formatBytes(item.file.size)),
+      );
+      const head = el("div", "share-check__head", clone("owl", owl), heading, summary);
+
+      const card = el("section", "share-check share-check--flat");
+      card.setAttribute("aria-label", item.file.name);
+      card.append(head);
+
+      if (item.state === "error") {
+        card.append(el("p", "exif-message exif-message--error", item.error ?? "Something went wrong."));
+      } else if (item.state === "clean-already") {
+        card.append(
+          el(
+            "p",
+            "exif-message",
+            "No location, camera or author data was found in this photo. Nothing to remove.",
+          ),
+        );
+      } else if (rows.length > 0) {
+        const ul = el("ul", "share-check__list");
+        rows.forEach((row, index) => {
+          const li = el("li", `share-check__row share-check__row--${row.tone}`);
+          li.style.setProperty("--i", String(index));
+          const body = el(
+            "span",
+            "share-check__body",
+            el("span", "share-check__label", row.label),
+            el(
+              "span",
+              "share-check__values num",
+              el("span", "share-check__before", row.before),
+              el("span", "share-check__arrow", "→"),
+              el("span", "share-check__after", row.after),
+            ),
+            row.note ? el("span", "share-check__note", row.note) : null,
+          );
+          const iconBox = el("span", "share-check__icon", clone("icon", row.icon));
+          iconBox.setAttribute("aria-hidden", "true");
+          const status = pill(
+            row.pill,
+            row.tone,
+            row.tone === "risk" ? "triangle-alert" : row.tone === "warn" ? "eye" : "check",
+          );
+          // The pill repeats the "after" text for most rows. Keep one of the two for screen readers.
+          if (row.pill === row.after) status.setAttribute("aria-hidden", "true");
+          li.append(iconBox, body, status);
+          ul.append(li);
+        });
+        card.append(ul);
+      }
+
+      if (item.state === "done" && item.result) {
+        const result = item.result;
+        const verify = el(
+          "p",
+          "exif-verify",
+          clone("icon", "check"),
+          item.keptTags
+            ? " Checked again: only the date and orientation are left."
+            : " Checked again: no hidden data found in the cleaned file.",
+        );
+        card.append(verify);
+        if (result.note) card.append(el("p", "exif-message", result.note));
+
+        const button = el("button", "btn btn--primary btn--small", clone("icon", "download"), "Download clean copy");
+        button.type = "button";
+        button.addEventListener("click", () => saveFile(result.blob, cleanFileName(item.file.name)));
+        card.append(el("div", "exif-file__actions", button));
+      }
+
+      const li = el("li", "exif-file");
+      li.append(card);
+      return li;
+    }
+
+    function paint(item: Item) {
+      const node = renderItem(item);
+      if (item.node && item.node.isConnected) item.node.replaceWith(node);
+      else list.append(node);
+      item.node = node;
+      refreshControls();
+    }
+
+    function refreshControls() {
+      const foundCount = items.filter((item) => item.state === "found").length;
+      const doneCount = items.filter((item) => item.state === "done").length;
+      controls.hidden = items.length === 0;
+
+      cleanButton.hidden = foundCount === 0 && !busy;
+      cleanButton.disabled = busy || foundCount === 0;
+      cleanButton.textContent = busy
+        ? "Cleaning…"
+        : foundCount === 1
+          ? "Remove metadata from 1 photo"
+          : `Remove metadata from ${foundCount} photos`;
+
+      zipButton.hidden = doneCount < 2;
+      zipButton.textContent = `Download all ${doneCount} as ZIP`;
+      modeInputs.forEach((input) => (input.disabled = busy));
+    }
+
+    /* ---------- the work ---------- */
+
+    async function analyze(item: Item) {
+      try {
+        const bytes = new Uint8Array(await item.file.arrayBuffer());
+        item.report = await readMetadata(bytes);
+        item.state = item.report.found ? "found" : "clean-already";
+      } catch (error) {
+        item.state = "error";
+        item.error =
+          error instanceof Error ? error.message : "This file could not be read.";
+      }
+      paint(item);
+    }
+
+    const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    async function addFiles(files: File[]) {
+      const fresh = files.map<Item>((file) => ({
+        id: String(nextId++),
+        file,
+        state: "analyzing",
+      }));
+      items.push(...fresh);
+      fresh.forEach(paint);
+      announce(`Reading ${fresh.length} ${fresh.length === 1 ? "photo" : "photos"}…`);
+
+      for (const item of fresh) {
+        await analyze(item);
+        await pause();
+      }
+
+      const found = fresh.filter((item) => item.state === "found").length;
+      announce(
+        found > 0
+          ? `${found} ${found === 1 ? "photo has" : "photos have"} hidden data. Choose what to remove, then press the button.`
+          : "No hidden data found.",
+      );
+    }
+
+    async function cleanAll() {
+      if (busy) return;
+      const queue = items.filter((item) => item.state === "found");
+      if (queue.length === 0) return;
+
+      const options = { keepDateAndOrientation: keepMode() };
+      busy = true;
+      refreshControls();
+
+      let finished = 0;
+      for (const item of queue) {
+        item.state = "cleaning";
+        paint(item);
+        await pause();
+        try {
+          item.result = await cleanImage(item.file, options);
+          // After the check, EXIF is only present if the date/orientation were kept.
+          item.keptTags = item.result.after.hasExif;
+          item.state = "done";
+        } catch (error) {
+          item.state = "error";
+          item.error =
+            error instanceof Error ? error.message : "This photo could not be cleaned.";
+        }
+        finished += 1;
+        paint(item);
+        announce(`Cleaned ${finished} of ${queue.length}.`);
+      }
+
+      busy = false;
+      refreshControls();
+      const ok = queue.filter((item) => item.state === "done").length;
+      announce(`Done. ${ok} of ${queue.length} cleaned and checked again.`);
+    }
+
+    /* ---------- wiring ---------- */
+
+    root.addEventListener("files-selected", (event) => {
+      const files = (event as CustomEvent<{ files: File[] }>).detail.files;
+      void addFiles(files);
+    });
+
+    cleanButton.addEventListener("click", () => void cleanAll());
+
+    zipButton.addEventListener("click", () => {
+      const done = items.filter((item) => item.state === "done" && item.result);
+      void saveZip(
+        done.map((item) => ({
+          name: cleanFileName(item.file.name),
+          blob: item.result!.blob,
+        })),
+        "fileshush-clean-photos.zip",
+      );
+    });
+
+    clearButton.addEventListener("click", () => {
+      if (busy) return;
+      items.length = 0;
+      list.replaceChildren();
+      refreshControls();
+      announce("Cleared.");
+    });
+  }
+</script>

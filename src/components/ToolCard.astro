@@ -1,0 +1,28 @@
+---
+import type { Tool } from "../lib/tools";
+import Icon from "./Icon.astro";
+import ToolIcon from "./ToolIcon.astro";
+
+interface Props {
+  tool: Tool;
+  headingTag?: "h3" | "h4";
+}
+
+const { tool, headingTag = "h3" } = Astro.props;
+const Heading = headingTag;
+---
+
+<a class="tool-card" href={tool.url}>
+  <span class="tool-card__top">
+    <span class="tool-card__icon"><ToolIcon icon={tool.icon} /></span>
+    {tool.status !== "ready" && (
+      <span class="pill pill--neutral tool-card__status">In progress</span>
+    )}
+  </span>
+  <Heading class="tool-card__name">{tool.name}</Heading>
+  <span class="tool-card__desc">{tool.description}</span>
+  <span class="tool-card__foot">
+    <span class="tag">{tool.category}</span>
+    <Icon name="arrow-right" size={18} class="tool-card__arrow" />
+  </span>
+</a>
